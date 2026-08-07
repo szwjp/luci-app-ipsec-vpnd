@@ -5,7 +5,6 @@
 
 'use strict';
 'require form';
-'require fs';
 'require poll';
 'require rpc';
 'require uci';
@@ -16,6 +15,12 @@ const callServiceList = rpc.declare({
 	method: 'list',
 	params: ['name'],
 	expect: { '': {} }
+});
+
+const callServiceInit = rpc.declare({
+	object: 'rc',
+	method: 'init',
+	params: ['name', 'action']
 });
 
 function getServiceStatus() {
@@ -91,7 +96,7 @@ return view.extend({
 		// 保存配置后重启服务：勾选启用则启动，取消勾选则停止
 		m.save = function(ev) {
 			return form.Map.prototype.save.call(this, ev).then(function() {
-				return L.resolveDefault(fs.exec('/etc/init.d/ipsec-vpnd', ['restart']));
+				return L.resolveDefault(callServiceInit('ipsec-vpnd', 'restart'));
 			});
 		};
 
