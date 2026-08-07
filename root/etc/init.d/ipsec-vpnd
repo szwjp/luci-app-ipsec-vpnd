@@ -376,7 +376,7 @@ start_service() {
 	[ "$vt_enabled" -eq "0" ] && stop && return 1
 
 	# 系统 strongswan 的 ipsec 服务与本服务共用 charon，必须停掉避免冲突
-	[ -f /etc/init.d/ipsec ] && /etc/init.d/ipsec stop
+	[ -f /etc/init.d/ipsec ] && /etc/init.d/ipsec stop >/dev/null 2>&1
 
 	local vt_clientip vt_clientdns vt_account vt_password vt_secret
 	config_get vt_clientip "ipsec" "clientip"
