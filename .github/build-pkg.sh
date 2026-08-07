@@ -154,7 +154,7 @@ default_prerm $0 $@' > "$TEMP_PKG_DIR/CONTROL/prerm"
 
 	ipkg-build -m "" "$TEMP_PKG_DIR" "$TEMP_DIR"
 
-	mv "$TEMP_DIR/${PKG_NAME}-${PKG_VERSION}-all.ipk" "$BASE_DIR/${PKG_NAME}-${PKG_VERSION}-all.ipk"
+	mv "$TEMP_DIR/${PKG_NAME}_${PKG_VERSION}_all.ipk" "$BASE_DIR/${PKG_NAME}-${PKG_VERSION}-all.ipk"
 fi
 
 I18N_NAME="luci-i18n-ipsec-vpnd-zh-cn"
@@ -183,7 +183,7 @@ else
 		Description: IPSec VPN Server Chinese translation
 	EOFCTRL
 	ipkg-build -m "" "$I18N_DIR" "$TEMP_DIR"
-	mv "$TEMP_DIR/${I18N_NAME}-${PKG_VERSION}-all.ipk" "$BASE_DIR/${I18N_NAME}-${PKG_VERSION}-all.ipk"
+	mv "$TEMP_DIR/${I18N_NAME}_${PKG_VERSION}_all.ipk" "$BASE_DIR/${I18N_NAME}-${PKG_VERSION}-all.ipk"
 fi
 
 rm -rf "$TEMP_DIR"
