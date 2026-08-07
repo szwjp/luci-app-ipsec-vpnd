@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# 禁用 strongswan 自带的 ipsec 服务，避免与 ipsec-vpnd 共用 charon 冲突
+[ -f /etc/init.d/ipsec ] && /etc/init.d/ipsec disable
+
 uci -q batch <<-EOF >/dev/null
 	delete firewall.ipsecd
 	commit firewall
@@ -65,7 +68,9 @@ uci -q batch <<-EOF >/dev/null
 	commit firewall
 EOF
 
-[ -f "/etc/config/ipsec" ] && mv "/etc/config/ipsec" "/etc/config/ipsec-vpnd"
+# strongswan 的 /etc/config/ipsec 只是占位配置，直接删除，
+# 避免改名后覆盖本包自带配置（默认 enabled=0）
+[ -f "/etc/config/ipsec" ] && rm -f "/etc/config/ipsec"
 
 rm -f /tmp/luci-indexcache
 exit 0

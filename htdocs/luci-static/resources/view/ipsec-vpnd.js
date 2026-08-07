@@ -5,6 +5,7 @@
 
 'use strict';
 'require form';
+'require fs';
 'require poll';
 'require rpc';
 'require uci';
@@ -86,6 +87,13 @@ return view.extend({
 		o = s.option(form.Value, 'secret', _('Secret Pre-Shared Key'));
 		o.password = true;
 		o.rmempty = false;
+
+		// 保存配置后重启服务：勾选启用则启动，取消勾选则停止
+		m.save = function(ev) {
+			return form.Map.prototype.save.call(this, ev).then(function() {
+				return L.resolveDefault(fs.exec('/etc/init.d/ipsec-vpnd', ['restart']));
+			});
+		};
 
 		return m.render();
 	}
