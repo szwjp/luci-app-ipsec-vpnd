@@ -134,10 +134,10 @@ jobs:
             Automatically built on ${{ github.run_id }}.
             Commit: ${{ github.sha }}
           files: |
-            .github/luci-app-ipsec-vpnd_*.apk
-            .github/luci-app-ipsec-vpnd_*.ipk
-            .github/luci-i18n-ipsec-vpnd-zh-cn_*.apk
-            .github/luci-i18n-ipsec-vpnd-zh-cn_*.ipk
+            .github/luci-app-ipsec-vpnd-*.apk
+            .github/luci-app-ipsec-vpnd-*.ipk
+            .github/luci-i18n-ipsec-vpnd-zh-cn-*.apk
+            .github/luci-i18n-ipsec-vpnd-zh-cn-*.ipk
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publishing to GitHub Releases
@@ -145,6 +145,6 @@ jobs:
         if: github.event_name == 'release'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: .github/luci-app-ipsec-vpnd_*.*
+          file: .github/luci-app-ipsec-vpnd-*.*
           file_glob: true
           tag: ${{ github.ref }}
