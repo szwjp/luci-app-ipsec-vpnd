@@ -343,15 +343,13 @@ reload_service() {
 	local vt_enabled
 	config_get_bool vt_enabled "ipsec" "enabled" "0"
 	[ "$vt_enabled" -eq "0" ] && stop && return
-	running && {
-		prepare_env
-		[ $WAIT_FOR_INTF -eq 0 ] && {
-			ipsec rereadall
-			ipsec reload
-			return
-		}
-	}
-	[ "$vt_enabled" -eq "1" ] && start
+
+	# 配置变更时重启 procd 实例以重新加载。
+	# 不要使用 strongswan 的 ipsec rereadall/reload 命令：
+	# 它们通过 starter pidfile 操作 charon，会误杀本服务
+	# 自己管理的 starter/charon 实例
+	stop
+	start
 }
 
 check_ipsec_interface() {
