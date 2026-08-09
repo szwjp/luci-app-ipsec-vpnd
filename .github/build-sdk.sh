@@ -25,8 +25,10 @@ echo "==> [1/4] feeds update/install"
 
 echo "==> [2/4] 复制包源码到 package/$PKG_NAME"
 rm -rf "package/$PKG_NAME"
-cp -r "$SRC_DIR" "package/$PKG_NAME"
-rm -rf "package/$PKG_NAME/.git" "package/$PKG_NAME/.github"
+mkdir -p "package/$PKG_NAME"
+# SRC_DIR 含 sdk/ 目录，cp -r 到其自身子目录会被拒绝；
+# 用 tar 管道复制并排除 .git/.github
+tar -C "$SRC_DIR" --exclude=.git --exclude=.github -cf - . | tar -C "package/$PKG_NAME" -xf -
 
 echo "==> [3/4] make defconfig"
 make defconfig
