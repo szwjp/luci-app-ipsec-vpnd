@@ -1,0 +1,84 @@
+name: Build (SDK)
+
+# 测试用途：用标准 OpenWrt/ImmortalWrt SDK 编译流程打包，
+# 与无 SDK 的 build-pkg.sh 方案对比。仅手动触发，不影响正式 Build workflow。
+on:
+  workflow_dispatch:
+
+env:
+  SDK_URL: https://downloads.immortalwrt.org/releases/25.12.1/targets/x86/64/immortalwrt-sdk-25.12.1-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+  PKG_NAME: luci-app-ipsec-vpnd
+
+jobs:
+  build-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source tree
+        uses: actions/checkout@v4
+
+      # apk verify / apk add --simulate 需要 apk-tools；复用正式 workflow 的
+      # 源码编译方式（固定 commit），保证识别 ADB v3 格式
+      - name: Checkout apk-tools
+        uses: actions/checkout@v4
+        with:
+          repository: 'alpinelinux/apk-tools'
+          path: 'apk-tools'
+          fetch-depth: 0
+          ref: 'b5a31c0d865342ad80be10d68f1bb3d3ad9b0866'
+
+      - name: Setup dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y build-essential curl libssl-dev lua5.1 meson ninja-build zstd
+
+          pushd apk-tools
+          meson setup build \
+            -Db_lto=true \
+            -Dcompressed-help=false \
+            -Ddocs=disabled \
+            -Dhelp=enabled \
+            -Dlua_version=5.1 \
+            -Ddefault_library=static \
+            -Durl_backend=wget \
+            -Dzstd=false \
+            -Dpython=disabled \
+            -Dtests=disabled \
+            -Dcrypto_backend=openssl
+          ninja -C build
+          sudo -E meson install -C build --strip
+          popd
+
+      - name: Download & extract ImmortalWrt SDK
+        run: |
+          wget -q "$SDK_URL"
+          tar --zstd -xf immortalwrt-sdk-*.tar.zst
+          mv immortalwrt-sdk-* sdk
+
+      - name: Build package via SDK
+        run: |
+          bash .github/build-sdk.sh "$PWD/sdk"
+
+      - name: Verify APK integrity
+        run: |
+          APK_FILE=$(find sdk/bin/packages -name "*.apk" -path "*${PKG_NAME}*" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "Error: no apk produced for ${PKG_NAME}"
+            find sdk/bin/packages -type f || true
+            exit 1
+          fi
+          echo "Found: $APK_FILE"
+          # 结构/签名硬校验（--allow-untrusted：本包未签名，仅验证 ADB 格式完整性）
+          apk verify --allow-untrusted "$APK_FILE"
+          # 依赖解析模拟；CI 无 ImmortalWrt 源，依赖(srongswan 等)无法满足，
+          # 失败不阻断（仅作诊断输出），包结构由上面 apk verify 把关
+          apk add --simulate --allow-untrusted "$APK_FILE" 2>&1 | tail -5 || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-${{ env.PKG_NAME }}-packages
+          include-hidden-files: true
+          path: |
+            sdk/bin/packages/**/*.apk
