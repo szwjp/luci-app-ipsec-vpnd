@@ -27,7 +27,12 @@ function getServiceStatus() {
 	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
 		let isRunning = false;
 		try {
-			isRunning = res['ipsec-vpnd']['instances']['instance1']['running'];
+			// procd_open_instance 未指定实例名时，procd 按 init 脚本 basename
+			// 命名实例为 'ipsec-vpnd'；遍历全部实例，任一 running 即视为运行
+			let instances = res['ipsec-vpnd']['instances'] || {};
+			for (let name in instances)
+				if (instances[name]['running'])
+					isRunning = true;
 		} catch (e) { }
 		return isRunning;
 	});
@@ -93,9 +98,11 @@ return view.extend({
 		o.password = true;
 		o.rmempty = false;
 
-		// 保存配置后重启服务：勾选启用则启动，取消勾选则停止
+		// 保存配置后重启服务：勾选启用则启动，取消勾选则停止。
+		// save() 只在表单验证通过且配置提交成功后才 resolve，
+		// 验证失败会 reject，因此不会触发无意义的重启
 		m.save = function(ev) {
-			return form.Map.prototype.save.call(this, ev).then(function() {
+			return form.Map.prototype.save.call(this).then(function() {
 				return L.resolveDefault(callServiceInit('ipsec-vpnd', 'restart'));
 			});
 		};

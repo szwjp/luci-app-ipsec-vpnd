@@ -1,5 +1,12 @@
 #!/bin/sh
 
+# 仅首次安装时执行初始化（停用系统 ipsec、重建 network/firewall、删除
+# strongswan 占位配置）。升级或重复执行时直接跳过，避免覆盖用户对网络、
+# 防火墙及 strongswan 的自定义配置。
+# 初始化标记记录在 /etc/config/ipsec-vpnd 的 initialized 选项里：该文件
+# 在 conffiles 中，包升级和 sysupgrade 都会保留，标记不会丢失。
+[ "$(uci -q get ipsec-vpnd.ipsec.initialized)" = "1" ] && exit 0
+
 # 禁用 strongswan 自带的 ipsec 服务，避免与 ipsec-vpnd 共用 charon 冲突
 [ -f /etc/init.d/ipsec ] && /etc/init.d/ipsec disable
 
@@ -71,6 +78,10 @@ EOF
 # strongswan 的 /etc/config/ipsec 只是占位配置，直接删除，
 # 避免改名后覆盖本包自带配置（默认 enabled=0）
 [ -f "/etc/config/ipsec" ] && rm -f "/etc/config/ipsec"
+
+# 记录初始化标记，避免升级时重复执行破坏性操作
+uci -q set ipsec-vpnd.ipsec.initialized='1'
+uci -q commit ipsec-vpnd
 
 rm -f /tmp/luci-indexcache
 exit 0
