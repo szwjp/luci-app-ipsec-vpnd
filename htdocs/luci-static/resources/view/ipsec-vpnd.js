@@ -17,6 +17,12 @@ const callServiceList = rpc.declare({
 	expect: { '': {} }
 });
 
+const callServiceInit = rpc.declare({
+	object: 'rc',
+	method: 'init',
+	params: ['name', 'action']
+});
+
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
 		let isRunning = false;
@@ -92,8 +98,15 @@ return view.extend({
 		o.password = true;
 		o.rmempty = false;
 
-		// 保存后无需手动重启：uci 提交会触发 init.d 里注册的
-		// procd_add_reload_trigger，由 reload_service 完成 stop/start。
+		// 保存后显式 restart 服务：LuCI 保存走 uci commit，不会触发 procd 的
+		// config.change reload trigger（实测 commit/reload_config 均不重启服务），
+		// 必须显式 rc.init restart 才能让启用/停用即时生效。
+		m.save = function(ev) {
+			return form.Map.prototype.save.call(this).then(function() {
+				return L.resolveDefault(callServiceInit('ipsec-vpnd', 'restart'));
+			});
+		};
+
 		return m.render();
 	}
 });
