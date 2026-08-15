@@ -17,12 +17,6 @@ const callServiceList = rpc.declare({
 	expect: { '': {} }
 });
 
-const callServiceInit = rpc.declare({
-	object: 'rc',
-	method: 'init',
-	params: ['name', 'action']
-});
-
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
 		let isRunning = false;
@@ -54,7 +48,7 @@ return view.extend({
 		let m, s, o;
 
 		m = new form.Map('ipsec-vpnd', _('IPSec VPN Server'),
-			_('IPSec VPN connectivity using the native built-in VPN Client on iOS or Andriod (IKEv1 with PSK and Xauth)'));
+			_('IPSec VPN connectivity using the native built-in VPN Client on iOS or Android (IKEv1 with PSK and Xauth)'));
 
 		s = m.section(form.TypedSection);
 		s.anonymous = true;
@@ -78,12 +72,12 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'clientip', _('VPN Client IP'),
-			_('LAN DHCP reserved started IP addresses with the same subnet mask'));
+			_('Starting IP of the VPN client address pool (CIDR notation). Use a private subnet that does not overlap the LAN, e.g. 10.9.8.10/24'));
 		o.datatype = 'ip4addr';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'clientdns', _('VPN Client DNS'),
-			_('DNS using in VPN tunnel.Set to the router\'s LAN IP is recommended'));
+			_('DNS server assigned to VPN clients. Use the VPN gateway (ipsec0) address, e.g. 10.9.8.1'));
 		o.datatype = 'ip4addr';
 		o.rmempty = false;
 
@@ -98,15 +92,8 @@ return view.extend({
 		o.password = true;
 		o.rmempty = false;
 
-		// 保存配置后重启服务：勾选启用则启动，取消勾选则停止。
-		// save() 只在表单验证通过且配置提交成功后才 resolve，
-		// 验证失败会 reject，因此不会触发无意义的重启
-		m.save = function(ev) {
-			return form.Map.prototype.save.call(this).then(function() {
-				return L.resolveDefault(callServiceInit('ipsec-vpnd', 'restart'));
-			});
-		};
-
+		// 保存后无需手动重启：uci 提交会触发 init.d 里注册的
+		// procd_add_reload_trigger，由 reload_service 完成 stop/start。
 		return m.render();
 	}
 });

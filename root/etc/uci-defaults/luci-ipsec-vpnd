@@ -8,19 +8,49 @@
 [ "$(uci -q get ipsec-vpnd.ipsec.initialized)" = "1" ] && exit 0
 
 # 禁用 strongswan 自带的 ipsec 服务，避免与 ipsec-vpnd 共用 charon 冲突
-[ -f /etc/init.d/ipsec ] && /etc/init.d/ipsec disable
+[ -x /etc/init.d/ipsec ] && /etc/init.d/ipsec disable
 
 uci -q batch <<-EOF >/dev/null
 	delete firewall.ipsecd
 	commit firewall
 EOF
 
+# 从 LAN 地址推导 VPN 专用 /24 网段（输出前三段），确保与 LAN 网段不重叠。
+# strongswan 通过 kernel-libipsec 的 ipsec0 承载 VPN 客户端，VPN 使用独立
+# 私网网段并 NAT 到 wan，因此只需避开 LAN 所在 /24。约定取 LAN 前两段、
+# 第三段 +1（模 254）；LAN 地址取不到或非法时退回 10.9.8.0/24。
+vpn_subnet() {
+	local lan o1 o2 o3 c
+
+	lan="$(uci -q get network.lan.ipaddr)"
+	[ -n "$lan" ] || { echo "10.9.8"; return 0; }
+
+	o1="${lan%%.*}"; lan="${lan#*.}"
+	o2="${lan%%.*}"; lan="${lan#*.}"
+	o3="${lan%%.*}"
+
+	for o in "$o1" "$o2" "$o3"; do
+		case "$o" in
+			''|*[!0-9]*) echo "10.9.8"; return 0 ;;
+		esac
+		[ "$o" -le 255 ] 2>/dev/null || { echo "10.9.8"; return 0; }
+	done
+
+	c=$(( (o3 + 1) % 254 ))
+	[ "$c" -eq 0 ] && c=1
+	echo "$o1.$o2.$c"
+}
+
+VPN_NET="$(vpn_subnet)"
+VPN_GW="$VPN_NET.1"
+VPN_POOL="$VPN_NET.10/24"
+
 uci -q batch <<-EOF >/dev/null
 	delete network.VPN
 	set network.VPN=interface
 	set network.VPN.device="ipsec0"
 	set network.VPN.proto="static"
-	set network.VPN.ipaddr="192.168.0.1"
+	set network.VPN.ipaddr="$VPN_GW"
 	set network.VPN.netmask="255.255.255.0"
 	commit network
 
@@ -73,6 +103,10 @@ uci -q batch <<-EOF >/dev/null
 	set firewall.vpn.src="VPN"
 
 	commit firewall
+
+	set ipsec-vpnd.ipsec.clientip="$VPN_POOL"
+	set ipsec-vpnd.ipsec.clientdns="$VPN_GW"
+	commit ipsec-vpnd
 EOF
 
 # strongswan 的 /etc/config/ipsec 只是占位配置，直接删除，

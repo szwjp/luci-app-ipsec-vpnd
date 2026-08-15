@@ -67,7 +67,8 @@ if [ "$PKG_MGR" == "apk" ]; then
 export root="${IPKG_INSTROOT}"
 export pkgname="'"$PKG_NAME"'"
 default_postinst
-[ -n "${IPKG_INSTROOT}" ] || { rm -f /tmp/luci-indexcache.*
+[ -n "${IPKG_INSTROOT}" ] || { [ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
 	exit 0
@@ -81,7 +82,8 @@ export PKG_UPGRADE=1
 export root="${IPKG_INSTROOT}"
 export pkgname="'"$PKG_NAME"'"
 default_postinst
-[ -n "${IPKG_INSTROOT}" ] || { rm -f /tmp/luci-indexcache.*
+[ -n "${IPKG_INSTROOT}" ] || { [ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
 	exit 0
@@ -106,7 +108,7 @@ default_prerm' > "$TEMP_DIR/pre-deinstall"
 		--script "post-install:$TEMP_DIR/post-install" \
 		--script "post-upgrade:$TEMP_DIR/post-upgrade" \
 		--script "pre-deinstall:$TEMP_DIR/pre-deinstall" \
-		--info "depends:libc strongswan strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec kmod-tun" \
+		--info "depends:libc strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des kmod-tun" \
 		--files "$TEMP_PKG_DIR" \
 		--output "$TEMP_DIR/${PKG_NAME}-${PKG_VERSION}.apk"
 
@@ -117,7 +119,7 @@ else
 	cat > "$TEMP_PKG_DIR/CONTROL/control" <<-EOF
 		Package: $PKG_NAME
 		Version: $PKG_VERSION
-		Depends: libc, strongswan, strongswan-minimal, strongswan-mod-xauth-generic, strongswan-mod-kernel-libipsec, kmod-tun
+		Depends: libc, strongswan-minimal, strongswan-mod-xauth-generic, strongswan-mod-kernel-libipsec, strongswan-mod-des, kmod-tun
 		Source: https://github.com/szwjp/luci-app-ipsec-vpnd
 		SourceName: $PKG_NAME
 		Section: luci
@@ -139,9 +141,10 @@ default_postinst $0 $@' > "$TEMP_PKG_DIR/CONTROL/postinst"
 	chmod 0755 "$TEMP_PKG_DIR/CONTROL/postinst"
 
 	echo -e "[ -n "\${IPKG_INSTROOT}" ] || {
-	(. /etc/uci-defaults/luci-ipsec-vpnd) && rm -f /etc/uci-defaults/luci-ipsec-vpnd
-	rm -f /tmp/luci-indexcache
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
+	killall -HUP rpcd 2>/dev/null
 	exit 0
 }" > "$TEMP_PKG_DIR/CONTROL/postinst-pkg"
 	chmod 0755 "$TEMP_PKG_DIR/CONTROL/postinst-pkg"
