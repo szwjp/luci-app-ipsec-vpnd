@@ -15,7 +15,7 @@ LUCI_DEPENDS:= \
 LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-ipsec-vpnd
-PKG_VERSION:=27.815.002
+PKG_VERSION:=27.815.003
 PKG_RELEASE:=1
 
 define Package/luci-app-ipsec-vpnd/conffiles
