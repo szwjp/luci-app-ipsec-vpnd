@@ -90,7 +90,7 @@ uci -q batch <<-EOF >/dev/null
 
 	delete firewall.VPN
 	set firewall.VPN=zone
-	set firewall.VPN.name="VPN"
+	set firewall.VPN.name="ipsec"
 	set firewall.VPN.input="ACCEPT"
 	set firewall.VPN.forward="ACCEPT"
 	set firewall.VPN.output="ACCEPT"
@@ -98,9 +98,9 @@ uci -q batch <<-EOF >/dev/null
 
 	delete firewall.vpn
 	set firewall.vpn=forwarding
-	set firewall.vpn.name="vpn"
+	set firewall.vpn.name="ipsec"
 	set firewall.vpn.dest="wan"
-	set firewall.vpn.src="VPN"
+	set firewall.vpn.src="ipsec"
 
 	commit firewall
 
