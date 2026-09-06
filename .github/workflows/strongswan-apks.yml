@@ -1,0 +1,82 @@
+name: Build strongswan apks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source tree
+        uses: actions/checkout@v4
+
+      - name: Install host tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y -qq build-essential file gawk perl zstd
+
+      - name: Download & extract ImmortalWrt SDK 25.12.1 (x86_64)
+        run: |
+          curl -fsSL -o /tmp/sdk.tar.zst \
+            "https://downloads.immortalwrt.org/releases/25.12.1/targets/x86/64/immortalwrt-sdk-25.12.1-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+          tar --zstd -xf /tmp/sdk.tar.zst -C /tmp
+          echo "SDK=$(ls -d /tmp/immortalwrt-sdk-*)" >> "$GITHUB_ENV"
+
+      - name: Install vendored strongswan & enable package set
+        run: |
+          cp -r deps/strongswan "$SDK/package/strongswan"
+          cd "$SDK"
+          make defconfig
+          # luci-app-ipsec-vpnd DEPENDS 传递闭包 + minimal 所需 crypto/kernel 插件
+          for sym in \
+            PACKAGE_strongswan \
+            PACKAGE_strongswan-charon \
+            PACKAGE_strongswan-charon-cmd \
+            PACKAGE_strongswan-ipsec \
+            PACKAGE_strongswan-minimal \
+            PACKAGE_strongswan-mod-aes \
+            PACKAGE_strongswan-mod-des \
+            PACKAGE_strongswan-mod-gmp \
+            PACKAGE_strongswan-mod-hmac \
+            PACKAGE_strongswan-mod-kdf \
+            PACKAGE_strongswan-mod-kernel-libipsec \
+            PACKAGE_strongswan-mod-kernel-netlink \
+            PACKAGE_strongswan-mod-md5 \
+            PACKAGE_strongswan-mod-mgf1 \
+            PACKAGE_strongswan-mod-pubkey \
+            PACKAGE_strongswan-mod-random \
+            PACKAGE_strongswan-mod-sha1 \
+            PACKAGE_strongswan-mod-sha2 \
+            PACKAGE_strongswan-mod-sha3 \
+            PACKAGE_strongswan-mod-socket-default \
+            PACKAGE_strongswan-mod-stroke \
+            PACKAGE_strongswan-mod-updown \
+            PACKAGE_strongswan-mod-x509 \
+            PACKAGE_strongswan-mod-xauth-generic \
+            PACKAGE_strongswan-mod-xcbc ; do
+            ./scripts/config --enable "$sym"
+          done
+          make defconfig
+          grep -c "CONFIG_PACKAGE_strongswan" .config
+
+      - name: Compile strongswan
+        run: |
+          cd "$SDK"
+          make package/strongswan/compile V=s 2>&1 | tee /tmp/build.log
+
+      - name: Collect apks
+        run: |
+          mkdir -p /tmp/apks
+          find "$SDK" -name '*.apk' -path '*strongswan*' -exec cp -f {} /tmp/apks/ \;
+          ls -lh /tmp/apks/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: strongswan-apks
+          path: /tmp/apks/*.apk
