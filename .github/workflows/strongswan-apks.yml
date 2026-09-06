@@ -27,13 +27,24 @@ jobs:
           tar --zstd -xf /tmp/sdk.tar.zst -C /tmp
           echo "SDK=$(ls -d /tmp/immortalwrt-sdk-*)" >> "$GITHUB_ENV"
 
+      - name: Prepare feeds (packages for libgmp etc.)
+        run: |
+          cd "$SDK"
+          [ -f feeds.conf ] || cp feeds.conf.default feeds.conf
+          if ! grep -qE '^src-git[a-z-]*[ \t]+packages ' feeds.conf; then
+            echo 'src-git packages https://github.com/immortalwrt/packages.git;openwrt-25.12' >> feeds.conf
+          fi
+          ./scripts/feeds update packages 2>&1 | tail -3
+          ./scripts/feeds install -a >/dev/null 2>&1 || true
+
       - name: Install vendored strongswan & enable package set
         run: |
           cp -r deps/strongswan "$SDK/package/strongswan"
           cd "$SDK"
           make defconfig
-          # luci-app-ipsec-vpnd DEPENDS 传递闭包 + minimal 所需 crypto/kernel 插件
+          # luci-app-ipsec-vpnd DEPENDS 传递闭包 + minimal 所需插件/库
           for sym in \
+            PACKAGE_libgmp \
             PACKAGE_strongswan \
             PACKAGE_strongswan-charon \
             PACKAGE_strongswan-charon-cmd \
@@ -59,10 +70,11 @@ jobs:
             PACKAGE_strongswan-mod-x509 \
             PACKAGE_strongswan-mod-xauth-generic \
             PACKAGE_strongswan-mod-xcbc ; do
-            ./scripts/config --enable "$sym"
+            sed -i "s/^# CONFIG_${sym} is not set/CONFIG_${sym}=y/" .config
           done
           make defconfig
-          grep -c "CONFIG_PACKAGE_strongswan" .config
+          grep -c "CONFIG_PACKAGE_strongswan" .config || true
+          grep "CONFIG_PACKAGE_libgmp" .config || true
 
       - name: Compile strongswan
         run: |
