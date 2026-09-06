@@ -79,6 +79,9 @@ jobs:
       - name: Compile strongswan
         run: |
           cd "$SDK"
+          set -o pipefail
+          echo "--- config dump (排查依赖触发) ---"
+          grep -E "^CONFIG_PACKAGE_(strongswan|bash|ncurses|libgmp|gencerts|pki|libtls|full|isakmp|readline)=" .config || true
           make package/strongswan/compile V=s 2>&1 | tee /tmp/build.log
 
       - name: Collect apks
