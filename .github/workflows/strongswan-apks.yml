@@ -73,6 +73,12 @@ jobs:
             sed -i "s/^# CONFIG_${sym} is not set/CONFIG_${sym}=y/" .config
           done
           make defconfig
+          # ImmortalWrt SDK 25.12.1 的默认 .config 会启用 PACKAGE_bash=m，
+          # 而 feeds/packages/utils/bash 的 DEPENDS 是 +libncurses +libreadline，
+          # 这两个 lib 在 SDK 默认 .config 里没启用，导致 bash 链接 -lncurses 失败，
+          # 进而拖垮 make package/strongswan/compile。luci-app-ipsec-vpnd 不需要目标端 bash，
+          # 显式关掉可以避免牵连。
+          sed -i "s/^CONFIG_PACKAGE_bash=.*/# CONFIG_PACKAGE_bash is not set/" .config
           grep -c "CONFIG_PACKAGE_strongswan" .config || true
           grep "CONFIG_PACKAGE_libgmp" .config || true
 
@@ -81,7 +87,7 @@ jobs:
           cd "$SDK"
           set -o pipefail
           echo "--- config dump (排查依赖触发) ---"
-          grep -E "^CONFIG_PACKAGE_(strongswan|bash|ncurses|libgmp|gencerts|pki|libtls|full|isakmp|readline)=" .config || true
+          grep -E "^CONFIG_PACKAGE_(strongswan|bash|ncurses|readline|libgmp|libncurses|libreadline|gencerts|pki|libtls|full|isakmp)=" .config || true
           make package/strongswan/compile V=s 2>&1 | tee /tmp/build.log
 
       - name: Collect apks
