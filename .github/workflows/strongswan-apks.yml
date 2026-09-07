@@ -60,6 +60,16 @@ jobs:
           ./scripts/feeds update packages 2>&1 | tail -3
           ./scripts/feeds install -a >/dev/null 2>&1 || true
 
+          # 删 SDK 自带的 bash：luci-app-ipsec-vpnd 链上没人需要它。
+          # 原因：feeds/packages/net/strongswan（SDK upstream 版）里
+          # Package/strongswan-gencerts 声明 DEPENDS:=+bash，会让
+          # make package/strongswan/compile 把 bash 拉进 build。
+          # bash 链接行要 -lncurses -lreadline，但 ImmortalWrt SDK 25.12.1
+          # 的 package/libs/ncurses/Makefile / readline 不在 SDK tree 里，
+          # 链接必败。直接删 bash 让 build chain 根本看不到它。
+          rm -rf "$SDK/feeds/packages/utils/bash"
+          find "$SDK/package/feeds" -name "bash" -type d -exec rm -rf {} + 2>/dev/null || true
+
       - name: Install vendored strongswan & enable package set
         run: |
           cp -r deps/strongswan "$SDK/package/strongswan"
