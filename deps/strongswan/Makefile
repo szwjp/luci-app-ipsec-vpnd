@@ -407,7 +407,10 @@ endef
 define Package/strongswan-gencerts
 $(call Package/strongswan/Default)
   TITLE+= X.509 certificate generation utility
-  DEPENDS:= strongswan +strongswan-pki bash
+  # 删掉 bash 依赖：luci-app-ipsec-vpnd 不需要这个 X.509 证书生成工具，
+  # 且它会让 ImmortalWrt SDK 25.12.1 的 build 链把 bash 拉进来，
+  # 而 bash 在该 SDK 里链接 -lncurses 失败（libncurses 不在 SDK package set）。
+  DEPENDS:= strongswan +strongswan-pki
 endef
 
 define Package/strongswan-gencerts/description
