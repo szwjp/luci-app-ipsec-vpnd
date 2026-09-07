@@ -8,6 +8,9 @@ permissions:
 
 jobs:
   build:
+    # 整体超时：覆盖 download SDK + feeds update + compile 的最坏情况
+    # 比默认 6h 短，避免 CDN 抽风时挂在那里空转
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source tree
@@ -20,10 +23,30 @@ jobs:
           sudo -E apt-get update -qq
           sudo -E apt-get install -y -qq build-essential file gawk perl zstd
 
+      # SDK 压缩包 563MB，从 downloads.immortalwrt.org 拉过去历史最差 13min+，
+      # 偶尔会卡到 30+min（CDN 限流或 runner 网络抽风）。
+      # 用 actions/cache 缓存 /tmp/sdk.tar.zst，命中时整个 step 跳过。
+      # 升级 SDK 时把 key 一起改掉就行。
+      - name: Cache ImmortalWrt SDK tarball
+        id: sdk-cache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/sdk.tar.zst
+          key: immortalwrt-sdk-25.12.1-x86-64-gcc-14.3.0-musl
+          restore-keys: |
+            immortalwrt-sdk-
+
       - name: Download & extract ImmortalWrt SDK 25.12.1 (x86_64)
         run: |
-          curl -fsSL -o /tmp/sdk.tar.zst \
-            "https://downloads.immortalwrt.org/releases/25.12.1/targets/x86/64/immortalwrt-sdk-25.12.1-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+          if [ ! -s /tmp/sdk.tar.zst ]; then
+            echo "::group::Downloading SDK (~563 MB)..."
+            curl --fail --show-error --location --retry 3 --retry-delay 5 --max-time 1500 \
+              -o /tmp/sdk.tar.zst \
+              "https://downloads.immortalwrt.org/releases/25.12.1/targets/x86/64/immortalwrt-sdk-25.12.1-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+            echo "::endgroup::"
+          else
+            echo "Using cached SDK tarball: $(stat -c %s /tmp/sdk.tar.zst 2>/dev/null || stat -f%z /tmp/sdk.tar.zst) bytes"
+          fi
           tar --zstd -xf /tmp/sdk.tar.zst -C /tmp
           echo "SDK=$(ls -d /tmp/immortalwrt-sdk-*)" >> "$GITHUB_ENV"
 
