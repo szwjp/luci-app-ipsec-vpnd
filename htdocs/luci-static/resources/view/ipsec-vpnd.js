@@ -120,78 +120,29 @@ return view.extend({
 			]);
 			let hint = E('p', { 'id': 'ipsec_clients_hint' }, _('Collecting data...'));
 
-			const HISTORY_KEY = 'ipsec_vpnd_clients_history';
-
-			let loadHistory = function() {
-				try {
-					let v = localStorage.getItem(HISTORY_KEY);
-					return v ? JSON.parse(v) : {};
-				} catch (e) { return {}; }
-			};
-
-			let saveHistory = function(h) {
-				try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch (e) { }
-			};
-
-			let sessionKey = function(s) {
-				return (s.user || '') + '|' + (s.remote || '');
-			};
-
 			let update = function() {
 				return L.resolveDefault(callIpsecSessions(), {}).then(function(res) {
-					let online = (res && Array.isArray(res.sessions)) ? res.sessions : null;
+					let sessions = (res && Array.isArray(res.sessions)) ? res.sessions : null;
 					let hintEl = document.getElementById('ipsec_clients_hint');
-					if (online === null) {
+					if (sessions === null) {
 						if (hintEl) hintEl.textContent = _('Failed to retrieve VPN client information.');
 						return;
 					}
-
-					// merge currently online sessions into the retained history;
-					// keyed by user+remote address so each distinct source stays a row
-					let history = loadHistory();
-					let onlineKeys = {};
-
-					online.forEach(function(s) {
-						let key = sessionKey(s);
-						let rec = history[key] || { user: s.user || '', remote: s.remote || '' };
-						rec.vip = s.vip || rec.vip || '';
-						rec.age = s.age || rec.age || '';
-						rec.online = true;
-						rec.last_seen = Date.now();
-						history[key] = rec;
-						onlineKeys[key] = true;
-					});
-
-					// sessions seen before but not online right now are disconnected
-					Object.keys(history).forEach(function(key) {
-						if (!onlineKeys[key]) history[key].online = false;
-					});
-
-					if (Object.keys(history).length === 0) {
+					if (sessions.length === 0) {
 						if (hintEl) hintEl.textContent = _('No VPN clients are connected.');
 						cbi_update_table(clientTable, []);
-						saveHistory(history);
 						return;
 					}
-
 					if (hintEl) hintEl.textContent = '';
-
-					let rows = Object.keys(history).map(function(key) {
-						return history[key];
-					}).sort(function(a, b) {
-						if (a.online != b.online) return a.online ? -1 : 1;
-						return (b.last_seen || 0) - (a.last_seen || 0);
-					}).map(function(rec) {
+					cbi_update_table(clientTable, sessions.map(function(s) {
 						return [
-							rec.user || '-',
-							rec.remote || '-',
-							rec.vip || '-',
-							rec.age || '-',
-							rec.online ? _('Connected') : _('Disconnected')
+							s.user || '-',
+							s.remote || '-',
+							s.vip || '-',
+							s.age || '-',
+							s.online ? _('Connected') : _('Disconnected')
 						];
-					});
-					cbi_update_table(clientTable, rows);
-					saveHistory(history);
+					}));
 				});
 			};
 

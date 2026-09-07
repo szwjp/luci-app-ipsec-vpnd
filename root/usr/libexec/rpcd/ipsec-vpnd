@@ -3,13 +3,20 @@
 #
 # rpcd backend for luci-app-ipsec-vpnd.
 # Exposes one read-only ubus object method "sessions": parse `ipsec statusall`
-# (stroke) and return the list of currently connected IPSec clients.
+# (stroke), merge the currently-online IKEv1 SA set with a persisted history of
+# seen clients (router-side, survives browser/reboot), and return the combined
+# list with an "online" flag per entry.
 #
-# rpcd plugin protocol: argv[1] = "list" | "call",
-# argv[2] = method name when calling; the request JSON arrives on stdin.
-# stdout must carry exactly one JSON document.
+# rpcd plugin protocol: argv[1] = "list" | "call", argv[2] = method name when
+# calling; the request JSON arrives on stdin. stdout carries one JSON document.
+#
+# Persisted state: one line per known client, TAB separated:
+#   key\tuser\tremote\tvip\tage\tlast_seen   (key = "user|remote")
 
 . /usr/share/libubox/jshn.sh
+
+STATE_FILE="/etc/luci-app-ipsec-vpnd-sessions.state"
+STATE_TMP="/etc/.luci-app-ipsec-vpnd-sessions.tmp"
 
 list_methods() {
 	printf '%s\n' '{"sessions":{}}'
@@ -22,10 +29,11 @@ json_err() {
 	json_dump
 }
 
+# Parse `ipsec statusall` from stdin into TAB-separated online rows:
+#   key\tuser\tremote\tvip\tage
 parse_statusall() {
 	awk '
 function getsa(l) {
-	# strip the "<conn>[<n>]:" prefix of an SA line (leading blanks allowed)
 	if (match(l, /^[ \t]*[A-Za-z0-9_.-]+\[[0-9]+\]:/)) {
 		s = substr(l, RSTART, RLENGTH - 1)
 		sub(/^[ \t]*/, "", s)
@@ -34,21 +42,14 @@ function getsa(l) {
 	return ""
 }
 function getts(s) {
-	# first "ip/prefix" found in s, or ""
 	if (match(s, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+/))
 		return substr(s, RSTART, RLENGTH)
 	return ""
-}
-function jesc(s) {
-	gsub(/\\/, "\\\\", s)
-	gsub(/"/, "\\\"", s)
-	return s
 }
 BEGIN { n = 0; last = "" }
 {
 	line = $0
 
-	# IKE SA up: "   xauth_psk[1]: ESTABLISHED 8 minutes ago, <local>...<remote>"
 	if (match(line, /^[ \t]*[A-Za-z0-9_.-]+\[[0-9]+\]: ESTABLISHED /)) {
 		sa = getsa(line)
 		if (!(sa in est)) {
@@ -60,7 +61,6 @@ BEGIN { n = 0; last = "" }
 			e = index(line, " ago,")
 			age[sa] = (e > s) ? substr(line, s, e - s) : ""
 
-			# remote side follows the "..." separator; take its IPv4 if any
 			rest = ""
 			i = index(line, "...")
 			if (i > 0) rest = substr(line, i + 3)
@@ -74,12 +74,10 @@ BEGIN { n = 0; last = "" }
 				ip = rest
 			}
 			remote[sa] = ip
-			state[sa] = "ESTABLISHED"
 		}
 		next
 	}
 
-	# XAuth login name, e.g. "xauth_psk[1]: Remote XAuth identity: wjp"
 	if (line ~ /[Xx][Aa]uth/ && index(line, "identity:") > 0) {
 		sa = getsa(line)
 		if (sa != "" && (sa in est) && !(sa in user)) {
@@ -90,11 +88,8 @@ BEGIN { n = 0; last = "" }
 		next
 	}
 
-	# CHILD_SA traffic selector carrying the assigned /32 client address:
-	#   "   xauth_psk{2}:  0.0.0.0/0 === 192.168.0.10/32"
-	# strongSwan 6.x prints the pool /32 on the RIGHT (remote) side here; keep
-	# whichever side is a /32 host address (SA prefix uses braces and is
-	# intentionally not matched by getsa, so it falls back to the last IKE SA).
+	# CHILD_SA traffic selector carrying the assigned /32 client address;
+	# strongSwan 6.x puts the pool /32 on the RIGHT (remote) side here.
 	if (index(line, "===") > 0 && line ~ /\/[0-9]+/) {
 		i = index(line, "===")
 		l = getts(substr(line, 1, i - 1))
@@ -111,21 +106,88 @@ BEGIN { n = 0; last = "" }
 	}
 }
 END {
-	printf "{\"code\":0,\"sessions\":["
 	for (k = 1; k <= n; k++) {
 		sa = order[k]
-		if (k > 1) printf ","
-		printf "{\"user\":\"%s\",\"remote\":\"%s\",\"vip\":\"%s\",\"age\":\"%s\",\"state\":\"%s\"}",
-			jesc(user[sa]), jesc(remote[sa]), jesc(vip[sa]), jesc(age[sa]), jesc(state[sa])
+		u = user[sa]; r = remote[sa]; v = vip[sa]; a = age[sa]
+		if (u == "") u = "-"
+		if (r == "") r = "-"
+		printf "%s|%s\t%s\t%s\t%s\t%s\n", u, r, u, r, v, a
 	}
-	printf "]}\n"
 }'
 }
 
 sessions() {
-	# IPSEC_STATUSALL_CMD is overridable so the parser can be tested offline
-	local cmd="${IPSEC_STATUSALL_CMD:-/usr/sbin/ipsec statusall}"
-	$cmd 2>/dev/null | parse_statusall
+	local now="$(date +%s)"
+	local online_tmp="/tmp/.luci-app-ipsec-vpnd-online.tsv"
+
+	# ensure the history file exists so awk can always read it as first input
+	[ -f "$STATE_FILE" ] || : > "$STATE_FILE"
+
+	# current online clients as TSV
+	/usr/sbin/ipsec statusall 2>/dev/null | parse_statusall > "$online_tmp"
+
+	awk -F'\t' -v now="$now" -v state_tmp="$STATE_TMP" '
+function jesc(s) {
+	gsub(/\\/, "\\\\", s)
+	gsub(/"/, "\\\"", s)
+	return s
+}
+BEGIN { n = 0 }
+NR == FNR {
+	# history rows: key user remote vip age last_seen
+	key = $1
+	if (key == "") next
+	if (!(key in seen)) { seen[key] = 1; order[++n] = key }
+	hu[key] = $2; hr[key] = $3; hv[key] = $4; ha[key] = $5; hl[key] = $6
+	next
+}
+{
+	# online rows: key user remote vip age
+	key = $1
+	if (key == "") next
+	active[key] = 1
+	if (!(key in seen)) { seen[key] = 1; order[++n] = key }
+	hu[key] = $2; hr[key] = $3; hv[key] = $4; ha[key] = $5; hl[key] = now
+}
+END {
+	# build output order: online first (kept), then offline by last_seen desc
+	nc = 0
+	for (i = 1; i <= n; i++)
+		if (active[order[i]]) out[++nc] = order[i]
+	oc = 0
+	for (i = 1; i <= n; i++)
+		if (!active[order[i]]) off[++oc] = order[i]
+	for (i = 1; i <= oc; i++)
+		for (j = i + 1; j <= oc; j++)
+			if ((hl[off[j]] + 0) > (hl[off[i]] + 0)) {
+				t = off[i]; off[i] = off[j]; off[j] = t
+			}
+	for (i = 1; i <= oc; i++) out[++nc] = off[i]
+
+	# JSON response
+	printf "{\"code\":0,\"sessions\":["
+	first = 1
+	for (i = 1; i <= nc; i++) {
+		k = out[i]
+		if (!first) printf ","
+		first = 0
+		printf "{\"user\":\"%s\",\"remote\":\"%s\",\"vip\":\"%s\",\"age\":\"%s\",\"online\":%s}",
+			jesc(hu[k]), jesc(hr[k]), jesc(hv[k]), jesc(ha[k]),
+			(active[k] ? "true" : "false")
+	}
+	printf "]}\n"
+
+	# rewrite persisted history (drop online flag; recomputed each call)
+	for (i = 1; i <= n; i++) {
+		k = order[i]
+		printf "%s\t%s\t%s\t%s\t%s\t%s\n", k, hu[k], hr[k], hv[k], ha[k], hl[k] > state_tmp
+	}
+}' "$STATE_FILE" "$online_tmp"
+
+	rc=$?
+	rm -f "$online_tmp"
+	[ -s "$STATE_TMP" ] && mv "$STATE_TMP" "$STATE_FILE"
+	return $rc
 }
 
 main() {
