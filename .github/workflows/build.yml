@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source tree
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Checkout apk-tools
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: 'alpinelinux/apk-tools'
           path: 'apk-tools'
@@ -30,7 +30,7 @@ jobs:
           ref: 'b5a31c0d865342ad80be10d68f1bb3d3ad9b0866'
 
       - name: Checkout po2lmo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: 'openwrt/luci'
           path: 'po2lmo'
@@ -75,7 +75,7 @@ jobs:
           ls -l .github/*.apk .github/*.ipk
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ipsec-vpnd-packages
           include-hidden-files: true
