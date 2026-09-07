@@ -80,6 +80,7 @@ conn xauth_psk
 	rightauth2=xauth
 	rightsourceip=$vt_clientip
 	rightdns=$vt_clientdns
+	leftupdown=/usr/lib/ipsec/luci-ipsec-vpnd-updown
 	auto=add
 EOF
 
