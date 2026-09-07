@@ -1,136 +1,51 @@
-name: Build strongswan apks
+name: Cleanup Old Workflow Runs
 
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      keep_days:
+        description: "保留最近多少天（默认 1）"
+        required: false
+        default: "1"
 
 jobs:
-  build:
-    # 整体超时：覆盖 download SDK + feeds update + compile 的最坏情况
-    # 比默认 6h 短，避免 CDN 抽风时挂在那里空转
-    timeout-minutes: 30
+  cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+
     steps:
-      - name: Checkout source tree
-        uses: actions/checkout@v5
-
-      - name: Install host tools
+      - name: 删除指定天数前的已完成运行
         env:
-          DEBIAN_FRONTEND: noninteractive
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_DAYS: ${{ inputs.keep_days }}
         run: |
-          sudo -E apt-get update -qq
-          sudo -E apt-get install -y -qq build-essential file gawk perl zstd
-
-      # SDK 压缩包 563MB，从 downloads.immortalwrt.org 拉过去历史最差 13min+，
-      # 偶尔会卡到 30+min（CDN 限流或 runner 网络抽风）。
-      # 用 actions/cache 缓存 /tmp/sdk.tar.zst，命中时整个 step 跳过。
-      # 升级 SDK 时把 key 一起改掉就行。
-      - name: Cache ImmortalWrt SDK tarball
-        id: sdk-cache
-        uses: actions/cache@v5
-        with:
-          path: /tmp/sdk.tar.zst
-          key: immortalwrt-sdk-25.12.1-x86-64-gcc-14.3.0-musl
-          restore-keys: |
-            immortalwrt-sdk-
-
-      - name: Download & extract ImmortalWrt SDK 25.12.1 (x86_64)
-        run: |
-          if [ ! -s /tmp/sdk.tar.zst ]; then
-            echo "::group::Downloading SDK (~563 MB)..."
-            curl --fail --show-error --location --retry 3 --retry-delay 5 --max-time 1500 \
-              -o /tmp/sdk.tar.zst \
-              "https://downloads.immortalwrt.org/releases/25.12.1/targets/x86/64/immortalwrt-sdk-25.12.1-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
-            echo "::endgroup::"
-          else
-            echo "Using cached SDK tarball: $(stat -c %s /tmp/sdk.tar.zst 2>/dev/null || stat -f%z /tmp/sdk.tar.zst) bytes"
+          : "${KEEP_DAYS:=1}"
+          if ! [[ "$KEEP_DAYS" =~ ^[0-9]+$ ]]; then
+            echo "Error: keep_days 必须是数字"
+            exit 1
           fi
-          tar --zstd -xf /tmp/sdk.tar.zst -C /tmp
-          echo "SDK=$(ls -d /tmp/immortalwrt-sdk-*)" >> "$GITHUB_ENV"
+          THRESHOLD="$(date -u -d "${KEEP_DAYS} days ago" '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "阈值时间(UTC)：$THRESHOLD"
 
-      - name: Prepare feeds (packages for libgmp etc.)
-        run: |
-          cd "$SDK"
-          [ -f feeds.conf ] || cp feeds.conf.default feeds.conf
-          if ! grep -qE '^src-git[a-z-]*[ \t]+packages ' feeds.conf; then
-            echo 'src-git packages https://github.com/immortalwrt/packages.git;openwrt-25.12' >> feeds.conf
+          RUN_IDS=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" \
+                    --paginate -F per_page=100 \
+                    --jq '.workflow_runs[]
+                          | select(.status=="completed" and .created_at < "'"$THRESHOLD"'")
+                          | .id')
+
+          if [ -z "$RUN_IDS" ]; then
+            echo "✅ 没有可删除的运行"
+            exit 0
           fi
-          ./scripts/feeds update packages 2>&1 | tail -3
-          ./scripts/feeds install -a >/dev/null 2>&1 || true
 
-          # 删 SDK 自带的 bash：luci-app-ipsec-vpnd 链上没人需要它。
-          # 原因：feeds/packages/net/strongswan（SDK upstream 版）里
-          # Package/strongswan-gencerts 声明 DEPENDS:=+bash，会让
-          # make package/strongswan/compile 把 bash 拉进 build。
-          # bash 链接行要 -lncurses -lreadline，但 ImmortalWrt SDK 25.12.1
-          # 的 package/libs/ncurses/Makefile / readline 不在 SDK tree 里，
-          # 链接必败。直接删 bash 让 build chain 根本看不到它。
-          rm -rf "$SDK/feeds/packages/utils/bash"
-          find "$SDK/package/feeds" -name "bash" -type d -exec rm -rf {} + 2>/dev/null || true
-
-      - name: Install vendored strongswan & enable package set
-        run: |
-          cp -r deps/strongswan "$SDK/package/strongswan"
-          cd "$SDK"
-          make defconfig
-          # luci-app-ipsec-vpnd DEPENDS 传递闭包 + minimal 所需插件/库
-          for sym in \
-            PACKAGE_libgmp \
-            PACKAGE_strongswan \
-            PACKAGE_strongswan-charon \
-            PACKAGE_strongswan-charon-cmd \
-            PACKAGE_strongswan-ipsec \
-            PACKAGE_strongswan-minimal \
-            PACKAGE_strongswan-mod-aes \
-            PACKAGE_strongswan-mod-des \
-            PACKAGE_strongswan-mod-gmp \
-            PACKAGE_strongswan-mod-hmac \
-            PACKAGE_strongswan-mod-kdf \
-            PACKAGE_strongswan-mod-kernel-libipsec \
-            PACKAGE_strongswan-mod-kernel-netlink \
-            PACKAGE_strongswan-mod-md5 \
-            PACKAGE_strongswan-mod-mgf1 \
-            PACKAGE_strongswan-mod-pubkey \
-            PACKAGE_strongswan-mod-random \
-            PACKAGE_strongswan-mod-sha1 \
-            PACKAGE_strongswan-mod-sha2 \
-            PACKAGE_strongswan-mod-sha3 \
-            PACKAGE_strongswan-mod-socket-default \
-            PACKAGE_strongswan-mod-stroke \
-            PACKAGE_strongswan-mod-updown \
-            PACKAGE_strongswan-mod-x509 \
-            PACKAGE_strongswan-mod-xauth-generic \
-            PACKAGE_strongswan-mod-xcbc ; do
-            sed -i "s/^# CONFIG_${sym} is not set/CONFIG_${sym}=y/" .config
+          echo "待删除运行数量：$(wc -w <<< "$RUN_IDS")"
+          for ID in $RUN_IDS; do
+            echo "🗑 正在删除运行 ID: $ID"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${ID}" || {
+              echo "⚠️ 删除失败：$ID（将继续处理其他项）"
+            }
+            sleep 0.2
           done
-          make defconfig
-          # ImmortalWrt SDK 25.12.1 的默认 .config 会启用 PACKAGE_bash=m，
-          # 而 feeds/packages/utils/bash 的 DEPENDS 是 +libncurses +libreadline，
-          # 这两个 lib 在 SDK 默认 .config 里没启用，导致 bash 链接 -lncurses 失败，
-          # 进而拖垮 make package/strongswan/compile。luci-app-ipsec-vpnd 不需要目标端 bash，
-          # 显式关掉可以避免牵连。
-          sed -i "s/^CONFIG_PACKAGE_bash=.*/# CONFIG_PACKAGE_bash is not set/" .config
-          grep -c "CONFIG_PACKAGE_strongswan" .config || true
-          grep "CONFIG_PACKAGE_libgmp" .config || true
 
-      - name: Compile strongswan
-        run: |
-          cd "$SDK"
-          set -o pipefail
-          echo "--- config dump (排查依赖触发) ---"
-          grep -E "^CONFIG_PACKAGE_(strongswan|bash|ncurses|readline|libgmp|libncurses|libreadline|gencerts|pki|libtls|full|isakmp)=" .config || true
-          make package/strongswan/compile V=s 2>&1 | tee /tmp/build.log
-
-      - name: Collect apks
-        run: |
-          mkdir -p /tmp/apks
-          find "$SDK" -name '*.apk' -path '*strongswan*' -exec cp -f {} /tmp/apks/ \;
-          ls -lh /tmp/apks/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: strongswan-apks
-          path: /tmp/apks/*.apk
+          echo "🎉 清理完成"
