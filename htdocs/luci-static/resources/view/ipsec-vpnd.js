@@ -115,16 +115,35 @@ return view.extend({
 		s = m.section(form.TypedSection);
 		s.anonymous = true;
 		s.render = function() {
+			// 用显式 <thead>/<tbody> 渲染：只重建表体，表头固定保留。
+			// 不依赖 cbi_update_table 对表头行（tr.table-titles）的处理，更稳。
+			let clientBody = E('tbody', { 'id': 'ipsec_clients_body' });
 			let clientTable = E('table', { 'class': 'table cbi-section-table', 'id': 'ipsec_clients_table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('User')),
-					E('th', { 'class': 'th' }, _('Remote Address')),
-					E('th', { 'class': 'th' }, _('Assigned IP')),
-					E('th', { 'class': 'th' }, _('Duration')),
-					E('th', { 'class': 'th' }, _('Status'))
-				])
+				E('thead', {}, [
+					E('tr', { 'class': 'tr table-titles' }, [
+						E('th', { 'class': 'th' }, _('User')),
+						E('th', { 'class': 'th' }, _('Remote Address')),
+						E('th', { 'class': 'th' }, _('Assigned IP')),
+						E('th', { 'class': 'th' }, _('Duration')),
+						E('th', { 'class': 'th' }, _('Status'))
+					])
+				]),
+				clientBody
 			]);
 			let hint = E('p', { 'id': 'ipsec_clients_hint' }, _('Collecting data...'));
+
+			let renderRows = function(sessions) {
+				clientBody.textContent = '';
+				sessions.forEach(function(s) {
+					clientBody.appendChild(E('tr', { 'class': 'tr' }, [
+						E('td', { 'class': 'td' }, s.user || '-'),
+						E('td', { 'class': 'td' }, s.remote || '-'),
+						E('td', { 'class': 'td' }, s.vip || '-'),
+						E('td', { 'class': 'td' }, s.age || '-'),
+						E('td', { 'class': 'td' }, s.online ? _('Connected') : _('Disconnected'))
+					]));
+				});
+			};
 
 			let update = function() {
 				return L.resolveDefault(callIpsecSessions(), {}).then(function(res) {
@@ -132,23 +151,16 @@ return view.extend({
 					let hintEl = document.getElementById('ipsec_clients_hint');
 					if (sessions === null) {
 						if (hintEl) hintEl.textContent = _('Failed to retrieve VPN client information.');
+						clientBody.textContent = '';
 						return;
 					}
 					if (sessions.length === 0) {
 						if (hintEl) hintEl.textContent = _('No VPN clients are connected.');
-						cbi_update_table(clientTable, []);
+						clientBody.textContent = '';
 						return;
 					}
 					if (hintEl) hintEl.textContent = '';
-					cbi_update_table(clientTable, sessions.map(function(s) {
-						return [
-							s.user || '-',
-							s.remote || '-',
-							s.vip || '-',
-							s.age || '-',
-							s.online ? _('Connected') : _('Disconnected')
-						];
-					}));
+					renderRows(sessions);
 				});
 			};
 
