@@ -55,6 +55,11 @@ jobs:
 
       - name: Prepare feeds, install vendored strongswan, drop bash
         run: |
+          # Capture the checkout root before cd'ing into the SDK.
+          # Relative paths in this step refer to $SDK after the cd, so
+          # any reference to deps/strongswan must use $GITHUB_WORKSPACE.
+          WORKSPACE="$GITHUB_WORKSPACE"
+
           cd "$SDK"
           [ -f feeds.conf ] || cp feeds.conf.default feeds.conf
           if ! grep -qE '^src-git[a-z-]*[ \t]+packages ' feeds.conf; then
@@ -69,7 +74,7 @@ jobs:
           # walks, so the override sticks — `cp -r` to package/strongswan
           # alone gets shadowed by the symlinked feeds copy.
           rm -rf "$SDK/feeds/packages/net/strongswan"
-          cp -r deps/strongswan "$SDK/feeds/packages/net/strongswan"
+          cp -r "$WORKSPACE/deps/strongswan" "$SDK/feeds/packages/net/strongswan"
 
           # Drop bash entirely. The SDK's feeds/packages/utils/bash
           # links against -lncurses -lreadline, but those libs aren't
