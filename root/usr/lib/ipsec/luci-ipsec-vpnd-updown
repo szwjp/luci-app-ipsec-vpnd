@@ -37,6 +37,11 @@ flock_unlock() {
 
 [ -n "$PLUTO_VERB" ] || exit 0
 
+# 只对 VPN 的 ipsec0 接口开 proxy_arp，不开到所有接口（避免影响 LAN/WAN）。
+# 该接口在 strongSwan 建 SA 时才存在，所以放在这里；服务停止时接口随 charon 移除，
+# proxy_arp 也随之消失，无需在此清理。
+[ -d /proc/sys/net/ipv4/conf/ipsec0 ] && echo 1 > /proc/sys/net/ipv4/conf/ipsec0/proxy_arp 2>/dev/null
+
 now="$(date +%s)"
 
 user="${PLUTO_XAUTH_ID:-}"

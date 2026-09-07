@@ -100,7 +100,7 @@ BEGIN { n = 0; last = "" }
 		sa = getsa(line)
 		if (sa != "" && (sa in est) && !(sa in user)) {
 			v = substr(line, index(line, "identity:") + 9)
-			gsub(/^[ \t'"'"']+|[ \t'"'"']+$/, "", v)
+			gsub(/^[ \t"'"'"']+|[ \t"'"'"']+$/, "", v)
 			if (v != "") user[sa] = v
 		}
 		next

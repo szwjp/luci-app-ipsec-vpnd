@@ -108,12 +108,10 @@ EOF
 	procd_set_param respawn
 
 	procd_close_instance
-
-	# 使用 conf/all 避免硬编码 br-lan（LAN 接口名可能不同）
-	echo 1 > /proc/sys/net/ipv4/conf/all/proxy_arp
 }
 
 stop_service() {
-	# 服务停止时关闭 proxy_arp，避免残留
-	echo 0 > /proc/sys/net/ipv4/conf/all/proxy_arp 2>/dev/null
+	# proxy_arp 由 updown 钩子按 ipsec0 接口单独设置，接口在服务停止时随 charon
+	# 一并移除，无需在此清理。
+	return 0
 }
