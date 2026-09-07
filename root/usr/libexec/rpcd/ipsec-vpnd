@@ -16,7 +16,25 @@
 . /usr/share/libubox/jshn.sh
 
 STATE_FILE="/etc/luci-app-ipsec-vpnd-sessions.state"
-STATE_TMP="/etc/.luci-app-ipsec-vpnd-sessions.tmp"
+# Working copy for sessions(); kept in /tmp so an unchanged 5s poll doesn't keep
+# rewriting the persistent state file on flash. Never share this path with the
+# updown hook.
+SESSIONS_TMP="/tmp/.luci-app-ipsec-vpnd-sessions.tmp"
+LOCK_FILE="/tmp/.luci-app-ipsec-vpnd-sessions.lock"
+
+# Best-effort advisory lock: serialises the read/merge/write against the updown
+# hook. If flock is unavailable each writer still uses its own tmp, so the worst
+# case is a lost update in a tiny race window, never a corrupted file.
+flock_lock() {
+	command -v flock >/dev/null 2>&1 || return 0
+	exec 9>"$LOCK_FILE" 2>/dev/null || return 0
+	flock -w 5 9 2>/dev/null || return 0
+}
+flock_unlock() {
+	command -v flock >/dev/null 2>&1 || return 0
+	flock -u 9 2>/dev/null
+	exec 9>&- 2>/dev/null
+}
 
 list_methods() {
 	printf '%s\n' '{"sessions":{},"clear_history":{}}'
@@ -126,14 +144,17 @@ sessions() {
 	# current online clients as TSV
 	/usr/sbin/ipsec statusall 2>/dev/null | parse_statusall > "$online_tmp"
 
-	awk -F'\t' -v now="$now" -v state_tmp="$STATE_TMP" '
+	# serialize read/merge/write with the updown hook
+	flock_lock
+
+	awk -F'\t' -v now="$now" -v state_tmp="$SESSIONS_TMP" -v state="$STATE_FILE" '
 function jesc(s) {
 	gsub(/\\/, "\\\\", s)
 	gsub(/"/, "\\\"", s)
 	return s
 }
 BEGIN { n = 0 }
-NR == FNR {
+FILENAME == state {
 	# history rows: key user remote vip age last_seen
 	key = $1
 	if (key == "") next
@@ -186,12 +207,20 @@ END {
 
 	rc=$?
 	rm -f "$online_tmp"
-	[ -s "$STATE_TMP" ] && mv "$STATE_TMP" "$STATE_FILE"
+	# rewrite the persisted history only when it actually changed, so an idle
+	# 5s poll doesn't keep re-writing the state file on flash.
+	if [ -s "$SESSIONS_TMP" ] && ! cmp -s "$SESSIONS_TMP" "$STATE_FILE"; then
+		mv "$SESSIONS_TMP" "$STATE_FILE"
+	fi
+	rm -f "$SESSIONS_TMP"
+	flock_unlock
 	return $rc
 }
 
 clear_history() {
-	rm -f "$STATE_FILE" "$STATE_TMP"
+	flock_lock
+	rm -f "$STATE_FILE" "$SESSIONS_TMP"
+	flock_unlock
 	json_init
 	json_add_int code 0
 	json_add_string message "cleared"

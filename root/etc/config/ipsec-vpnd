@@ -1,9 +1,11 @@
 
 config service 'ipsec'
-	option clientdns '192.168.0.1'
-	option account 'lean'
-	option secret 'myopenwrt'
+# 首次安装时 uci-defaults/luci-ipsec-vpnd 会按 LAN 推导实际 VPN 网段并覆盖
+# clientip / clientdns。下面的账号密码仅为占位值，启用服务前请务必修改。
+	option clientdns '10.9.8.1'
+	option account 'vpnuser'
+	option secret 'changeme'
 	option enabled '0'
-	option password '12345678'
-	option clientip '192.168.0.10/24'
+	option password 'changeme'
+	option clientip '10.9.8.10/24'
 
