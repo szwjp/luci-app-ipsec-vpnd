@@ -14,12 +14,16 @@ msgstr ""
 msgid "Collecting data..."
 msgstr ""
 
-#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:143
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:190
 msgid "Connected"
 msgstr ""
 
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:92
 msgid "DNS server assigned to VPN clients. Use the VPN gateway (ipsec0) address, e.g. 10.9.8.1"
+msgstr ""
+
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:190
+msgid "Disconnected"
 msgstr ""
 
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:117
@@ -30,7 +34,7 @@ msgstr ""
 msgid "Enable"
 msgstr ""
 
-#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:128
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:145
 msgid "Failed to retrieve VPN client information."
 msgstr ""
 
@@ -43,7 +47,7 @@ msgstr ""
 msgid "IPSec VPN"
 msgstr ""
 
-#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:153
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:202
 msgid "IPSec VPN Clients"
 msgstr ""
 
@@ -58,7 +62,7 @@ msgid ""
 "Android (IKEv1 with PSK and Xauth)"
 msgstr ""
 
-#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:132
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:171
 msgid "No VPN clients are connected."
 msgstr ""
 
