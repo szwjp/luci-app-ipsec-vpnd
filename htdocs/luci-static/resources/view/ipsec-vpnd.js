@@ -26,7 +26,7 @@ const callServiceInit = rpc.declare({
 const callIpsecSessions = rpc.declare({
 	object: 'ipsec-vpnd',
 	method: 'sessions',
-	expect: { sessions: [] }
+	expect: { '': {} }
 });
 
 function getServiceStatus() {

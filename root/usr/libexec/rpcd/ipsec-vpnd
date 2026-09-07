@@ -33,6 +33,12 @@ function getsa(l) {
 	}
 	return ""
 }
+function getts(s) {
+	# first "ip/prefix" found in s, or ""
+	if (match(s, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+/))
+		return substr(s, RSTART, RLENGTH)
+	return ""
+}
 function jesc(s) {
 	gsub(/\\/, "\\\\", s)
 	gsub(/"/, "\\\"", s)
@@ -84,16 +90,23 @@ BEGIN { n = 0; last = "" }
 		next
 	}
 
-	# CHILD_SA traffic selector carrying the assigned /32 VIP:
-	# "   xauth_psk[1]: 192.168.0.10/32 === 0.0.0.0/0" (SA prefix may be absent)
-	if (match(line, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/32[ \t]*===/)) {
-		b = index(line, "/32")
-		st = b
-		while (st > 1 && substr(line, st - 1, 1) ~ /[0-9.]/) st--
-		ip = substr(line, st, b - st)
-		sa = getsa(line)
-		if (!(sa in est)) sa = last
-		if ((sa in est) && !(sa in vip)) vip[sa] = ip
+	# CHILD_SA traffic selector carrying the assigned /32 client address:
+	#   "   xauth_psk{2}:  0.0.0.0/0 === 192.168.0.10/32"
+	# strongSwan 6.x prints the pool /32 on the RIGHT (remote) side here; keep
+	# whichever side is a /32 host address (SA prefix uses braces and is
+	# intentionally not matched by getsa, so it falls back to the last IKE SA).
+	if (index(line, "===") > 0 && line ~ /\/[0-9]+/) {
+		i = index(line, "===")
+		l = getts(substr(line, 1, i - 1))
+		r = getts(substr(line, i + 3))
+		ip = ""
+		if (r ~ /\/32$/) ip = substr(r, 1, length(r) - 3)
+		else if (l ~ /\/32$/) ip = substr(l, 1, length(l) - 3)
+		if (ip != "") {
+			sa = getsa(line)
+			if (!(sa in est)) sa = last
+			if ((sa in est) && !(sa in vip)) vip[sa] = ip
+		}
 		next
 	}
 }
