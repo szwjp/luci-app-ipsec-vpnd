@@ -19,7 +19,7 @@ STATE_FILE="/etc/luci-app-ipsec-vpnd-sessions.state"
 STATE_TMP="/etc/.luci-app-ipsec-vpnd-sessions.tmp"
 
 list_methods() {
-	printf '%s\n' '{"sessions":{}}'
+	printf '%s\n' '{"sessions":{},"clear_history":{}}'
 }
 
 json_err() {
@@ -190,6 +190,14 @@ END {
 	return $rc
 }
 
+clear_history() {
+	rm -f "$STATE_FILE" "$STATE_TMP"
+	json_init
+	json_add_int code 0
+	json_add_string message "cleared"
+	json_dump
+}
+
 main() {
 	case "$1" in
 		list)
@@ -198,6 +206,7 @@ main() {
 		call)
 			case "$2" in
 				sessions) sessions ;;
+				clear_history) clear_history ;;
 				*) json_err "unknown method" ;;
 			esac
 			;;

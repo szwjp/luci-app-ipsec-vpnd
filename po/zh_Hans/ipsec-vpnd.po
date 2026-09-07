@@ -16,6 +16,14 @@ msgstr "账户"
 msgid "Assigned IP"
 msgstr "分配的 IP"
 
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:162
+msgid "Clear all client history records?"
+msgstr "确定要清除所有客户端历史记录吗？"
+
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:168
+msgid "Clear history"
+msgstr "清除历史"
+
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:76
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:121
 msgid "Collecting data..."
@@ -54,7 +62,7 @@ msgstr "授予访问 ipsec 配置的权限"
 msgid "IPSec VPN"
 msgstr "IPSec VPN"
 
-#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:202
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:171
 msgid "IPSec VPN Clients"
 msgstr "IPSec VPN 在线客户端"
 

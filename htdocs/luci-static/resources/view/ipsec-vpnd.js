@@ -29,6 +29,12 @@ const callIpsecSessions = rpc.declare({
 	expect: { '': {} }
 });
 
+const callClearHistory = rpc.declare({
+	object: 'ipsec-vpnd',
+	method: 'clear_history',
+	expect: { '': {} }
+});
+
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
 		let isRunning = false;
@@ -149,8 +155,20 @@ return view.extend({
 			poll.add(update, 5);
 			update();
 
+			let clearBtn = E('button', {
+				'class': 'btn cbi-button-remove',
+				'click': function(ev) {
+					ev.preventDefault();
+					if (!window.confirm(_('Clear all client history records?')))
+						return;
+					L.resolveDefault(callClearHistory(), {}).then(function() {
+						return update();
+					});
+				}
+			}, [ _('Clear history') ]);
+
 			return E('div', { 'class': 'cbi-section cbi-tblsection' }, [
-				E('h3', _('IPSec VPN Clients')),
+				E('div', {}, [ E('h3', _('IPSec VPN Clients')), clearBtn ]),
 				hint,
 				clientTable
 			]);

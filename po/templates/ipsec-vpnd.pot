@@ -9,6 +9,14 @@ msgstr ""
 msgid "Assigned IP"
 msgstr ""
 
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:162
+msgid "Clear all client history records?"
+msgstr ""
+
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:168
+msgid "Clear history"
+msgstr ""
+
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:76
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:121
 msgid "Collecting data..."
@@ -47,7 +55,7 @@ msgstr ""
 msgid "IPSec VPN"
 msgstr ""
 
-#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:202
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:171
 msgid "IPSec VPN Clients"
 msgstr ""
 
