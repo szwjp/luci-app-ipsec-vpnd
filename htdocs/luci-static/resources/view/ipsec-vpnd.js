@@ -23,6 +23,12 @@ const callServiceInit = rpc.declare({
 	params: ['name', 'action']
 });
 
+const callIpsecSessions = rpc.declare({
+	object: 'ipsec-vpnd',
+	method: 'sessions',
+	expect: { sessions: [] }
+});
+
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
 		let isRunning = false;
@@ -97,6 +103,58 @@ return view.extend({
 		o = s.option(form.Value, 'secret', _('Secret Pre-Shared Key'));
 		o.password = true;
 		o.rmempty = false;
+
+		// 在线客户端列表：页面最底部，5s 轮询刷新。数据来自 rpcd 后端
+		// /usr/libexec/rpcd/ipsec-vpnd（解析 `ipsec statusall` 的 stroke 输出）。
+		s = m.section(form.TypedSection);
+		s.anonymous = true;
+		s.render = function() {
+			let clientTable = E('table', { 'class': 'table cbi-section-table', 'id': 'ipsec_clients_table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('User')),
+					E('th', { 'class': 'th' }, _('Remote Address')),
+					E('th', { 'class': 'th' }, _('Assigned IP')),
+					E('th', { 'class': 'th' }, _('Duration')),
+					E('th', { 'class': 'th' }, _('Status'))
+				])
+			]);
+			let hint = E('p', { 'id': 'ipsec_clients_hint' }, _('Collecting data...'));
+
+			let update = function() {
+				return L.resolveDefault(callIpsecSessions(), {}).then(function(res) {
+					let sessions = (res && Array.isArray(res.sessions)) ? res.sessions : null;
+					let hintEl = document.getElementById('ipsec_clients_hint');
+					if (sessions === null) {
+						if (hintEl) hintEl.textContent = _('Failed to retrieve VPN client information.');
+						return;
+					}
+					if (sessions.length === 0) {
+						if (hintEl) hintEl.textContent = _('No VPN clients are connected.');
+						cbi_update_table(clientTable, []);
+						return;
+					}
+					if (hintEl) hintEl.textContent = '';
+					cbi_update_table(clientTable, sessions.map(function(s) {
+						return [
+							s.user || '-',
+							s.remote || '-',
+							s.vip || '-',
+							s.age || '-',
+							(s.state == 'ESTABLISHED') ? _('Connected') : (s.state || '-')
+						];
+					}));
+				});
+			};
+
+			poll.add(update, 5);
+			update();
+
+			return E('div', { 'class': 'cbi-section cbi-tblsection' }, [
+				E('h3', _('IPSec VPN Clients')),
+				hint,
+				clientTable
+			]);
+		};
 
 		// 保存后显式 restart 服务：LuCI 保存走 uci commit，不会触发 procd 的
 		// config.change reload trigger（实测 commit/reload_config 均不重启服务），

@@ -3,6 +3,7 @@
 		"description": "Grant access to ipsec configuration",
 		"read": {
 			"ubus": {
+				"ipsec-vpnd": [ "sessions" ],
 				"rc": [ "init" ],
 				"service": [ "list" ]
 			},

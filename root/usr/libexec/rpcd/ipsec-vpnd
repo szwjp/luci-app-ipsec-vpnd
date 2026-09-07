@@ -1,0 +1,136 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+#
+# rpcd backend for luci-app-ipsec-vpnd.
+# Exposes one read-only ubus object method "sessions": parse `ipsec statusall`
+# (stroke) and return the list of currently connected IPSec clients.
+#
+# rpcd plugin protocol: argv[1] = "list" | "call",
+# argv[2] = method name when calling; the request JSON arrives on stdin.
+# stdout must carry exactly one JSON document.
+
+. /usr/share/libubox/jshn.sh
+
+list_methods() {
+	printf '%s\n' '{"sessions":{}}'
+}
+
+json_err() {
+	json_init
+	json_add_int code 1
+	json_add_string error "$1"
+	json_dump
+}
+
+parse_statusall() {
+	awk '
+function getsa(l) {
+	# strip the "<conn>[<n>]:" prefix of an SA line (leading blanks allowed)
+	if (match(l, /^[ \t]*[A-Za-z0-9_.-]+\[[0-9]+\]:/)) {
+		s = substr(l, RSTART, RLENGTH - 1)
+		sub(/^[ \t]*/, "", s)
+		return s
+	}
+	return ""
+}
+function jesc(s) {
+	gsub(/\\/, "\\\\", s)
+	gsub(/"/, "\\\"", s)
+	return s
+}
+BEGIN { n = 0; last = "" }
+{
+	line = $0
+
+	# IKE SA up: "   xauth_psk[1]: ESTABLISHED 8 minutes ago, <local>...<remote>"
+	if (match(line, /^[ \t]*[A-Za-z0-9_.-]+\[[0-9]+\]: ESTABLISHED /)) {
+		sa = getsa(line)
+		if (!(sa in est)) {
+			est[sa] = 1
+			order[++n] = sa
+			last = sa
+
+			s = index(line, "ESTABLISHED ") + 12
+			e = index(line, " ago,")
+			age[sa] = (e > s) ? substr(line, s, e - s) : ""
+
+			# remote side follows the "..." separator; take its IPv4 if any
+			rest = ""
+			i = index(line, "...")
+			if (i > 0) rest = substr(line, i + 3)
+			ip = ""
+			if (match(rest, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/))
+				ip = substr(rest, RSTART, RLENGTH)
+			if (ip == "") {
+				sub(/^[ \t]*/, "", rest)
+				j = index(rest, "[")
+				if (j > 0) rest = substr(rest, 1, j - 1)
+				ip = rest
+			}
+			remote[sa] = ip
+			state[sa] = "ESTABLISHED"
+		}
+		next
+	}
+
+	# XAuth login name, e.g. "xauth_psk[1]: Remote XAuth identity: wjp"
+	if (line ~ /[Xx][Aa]uth/ && index(line, "identity:") > 0) {
+		sa = getsa(line)
+		if (sa != "" && (sa in est) && !(sa in user)) {
+			v = substr(line, index(line, "identity:") + 9)
+			gsub(/^[ \t'"'"']+|[ \t'"'"']+$/, "", v)
+			if (v != "") user[sa] = v
+		}
+		next
+	}
+
+	# CHILD_SA traffic selector carrying the assigned /32 VIP:
+	# "   xauth_psk[1]: 192.168.0.10/32 === 0.0.0.0/0" (SA prefix may be absent)
+	if (match(line, /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/32[ \t]*===/)) {
+		b = index(line, "/32")
+		st = b
+		while (st > 1 && substr(line, st - 1, 1) ~ /[0-9.]/) st--
+		ip = substr(line, st, b - st)
+		sa = getsa(line)
+		if (!(sa in est)) sa = last
+		if ((sa in est) && !(sa in vip)) vip[sa] = ip
+		next
+	}
+}
+END {
+	printf "{\"code\":0,\"sessions\":["
+	for (k = 1; k <= n; k++) {
+		sa = order[k]
+		if (k > 1) printf ","
+		printf "{\"user\":\"%s\",\"remote\":\"%s\",\"vip\":\"%s\",\"age\":\"%s\",\"state\":\"%s\"}",
+			jesc(user[sa]), jesc(remote[sa]), jesc(vip[sa]), jesc(age[sa]), jesc(state[sa])
+	}
+	printf "]}\n"
+}'
+}
+
+sessions() {
+	# IPSEC_STATUSALL_CMD is overridable so the parser can be tested offline
+	local cmd="${IPSEC_STATUSALL_CMD:-/usr/sbin/ipsec statusall}"
+	$cmd 2>/dev/null | parse_statusall
+}
+
+main() {
+	case "$1" in
+		list)
+			list_methods
+			;;
+		call)
+			case "$2" in
+				sessions) sessions ;;
+				*) json_err "unknown method" ;;
+			esac
+			;;
+		*)
+			printf '%s\n' '{}'
+			;;
+	esac
+}
+
+# source-able for offline parser testing
+[ -n "$IPSEC_VPND_SKIP_MAIN" ] || main "$@"
