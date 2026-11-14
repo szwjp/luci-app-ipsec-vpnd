@@ -32,6 +32,46 @@ UCI 路径 `ipsec-vpnd.@ipsec[0]`，字段：
 
 VPN 客户端拨号后会拿到 `clientip` 池里一个地址，`clientdns` 指向 VPN 网关（路由器上的 `ipsec0` IP，固定为 `10.9.8.1`）。
 
+> `clientip` 直接传给 strongSwan 的 `rightsourceip`，格式是 `<起始地址>/<掩码>`，表示一个**地址池**。
+> 默认的 `10.9.8.10/24` 即 `10.9.8.10`–`10.9.8.254`（245 个地址，起点避开网关 `10.9.8.1`），
+> 多个客户端可以同时在线，各自拿到池里的一个地址（实测两个客户端分别拿到 `10.9.8.10` / `10.9.8.11`）。
+> 注意 `account` 目前只支持**一个** XAuth 账号，不同用户名无法登录。
+
+## 客户端配置示例（已实测通过）
+
+Linux 客户端（strongSwan 5.9/6.x）：
+
+```conf
+# /etc/ipsec.conf
+config setup
+    uniqueids=never
+
+conn client
+    keyexchange=ikev1
+    ike=aes128-sha1-modp2048,aes128-sha1-modp1024,3des-sha1-modp1024,3des-sha1-modp1536
+    esp=aes128-sha1,3des-sha1
+    right=192.168.1.139          # 服务端地址
+    rightauth=psk
+    left=%defaultroute
+    leftid=testuser             # IKE ID，同时作为 XAuth 用户名
+    leftauth=psk
+    leftauth2=xauth             # IKEv1 第二轮 XAuth 认证
+    leftsourceip=%config        # 向服务端申请虚拟地址
+    auto=start
+```
+
+```conf
+# /etc/ipsec.secrets（客户端侧也要写 XAuth 密码）
+: PSK "testpsk"
+testuser : XAUTH "testpass"
+```
+
+**关键点**：客户端必须用 `leftsourceip=%config`（或与服务端 `clientip` 完全一致的 TS）。
+写死 `leftsubnet=10.9.8.0/24` 或 `leftsourceip=<自己的地址>` 会与服务端下发的
+`10.9.8.10/32` 冲突，服务端日志出现
+`no matching CHILD_SA config found for 10.9.8.0/24 === <服务端IP>/32`，
+最终报 `INVALID_ID_INFORMATION`，IKE 起来了但 CHILD SA 装不上。
+
 ## 依赖
 
 本包是纯 LuCI 前端 + 脚本，运行时依赖 strongSwan。**安装本包时会自动拉取下面这些依赖**（apk / ipk 的 `depends` 已声明）：
