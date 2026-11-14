@@ -10,10 +10,10 @@ IKEv1 + PSK + Xauth（账号密码），目标用户是家用 / 小公司路由�
 
 ## 功能
 
-- **VPN 服务启停**（uhttpd → LuCI → procd 守护进程控制 strongSwan 的 `starter`）
-- **账号 / 密码 / PSK 配置** 写在 `/etc/config/ipsec-vpnd`，运行时被 init 脚本翻译成 strongSwan 的 `ipsec.conf` + `ipsec.secrets`
+- **VPN 服务启停**（uhttpd → LuCI → 控制 strongSwan 原生的 `ipsec` 服务，即 `procd` 托管的 `starter` + `charon`）
+- **账号 / 密码 / PSK 配置** 写在 `/etc/config/ipsec-vpnd`，由 `luci-ipsec-vpnd-render` 翻译成 strongSwan 的 `ipsec.conf` + `ipsec.secrets`
 - **首次安装自动初始化**：建 `network.VPN` 设备（绑 `ipsec0`）+ `firewall.ike/ipsec/ah/esp` 入站规则 + `firewall.VPN` zone + 端口转发；只跑一次，`/etc/config/ipsec-vpnd` 里的 `initialized` 标记防止升级时覆盖用户后续自定义
-- **和系统自带的 `ipsec` 服务冲突处理**：每次启动前都 `stop && disable` 系统那个，防止 charon 抢 UDP/500、4500
+- **不再自建服务实例**：本包不提供自己的 `ipsec-vpnd` 服务，charon 统一交给 strongSwan 自带的 `ipsec` 服务托管（`strongswan-ipsec` 包提供），从根本上避免两个服务抢 UDP/500、4500——抢端口时后启动的那个会**静默退出**，LuCI 上只显示「未运行」却查不到原因
 - **菜单位置**：`VPN → IPSec VPN Server`（order 30）
 - **依赖自检与诊断**：服务启动前检查 strongSwan 运行时是否完整，缺失时拒绝启动并写明确日志；LuCI 页面顶部直接列出缺哪一项、给出对应安装命令
 
@@ -45,7 +45,7 @@ VPN 客户端拨号后会拿到 `clientip` 池里一个地址，`clientdns` 指�
 | `kmod-tun` | TUN/TAP 设备 |
 
 > `strongswan-mod-stroke` 会连带装上 `strongswan-ipsec`（提供 `/usr/sbin/ipsec` 命令与系统自带的 `ipsec` 服务）。
-> 本包会自行启动并管理 charon，因此系统那个 `ipsec` 服务会被停用——LuCI 服务列表里它显示「已禁用」是正常的，实际跑的是 `ipsec-vpnd`。
+> 本包正是复用这个服务来托管 charon：LuCI 服务列表里跑起来的是 `ipsec`，本包不再有独立的 `ipsec-vpnd` 服务实例。
 
 ### 如果提示找不到依赖
 
@@ -85,7 +85,7 @@ apk add --allow-untrusted luci-i18n-ipsec-vpnd-zh-cn-*.apk   # 可选
 > 25.12 用 `apk`，更老的版本用 `opkg install`。
 > `--allow-untrusted` 是因为 CI 产出的包没有签名；正式分发建议自行签名。
 
-第一次安装会跑 `uci-defaults/luci-ipsec-vpnd` 一次性初始化（建 network/firewall/zone + 停用系统 ipsec 服务 + 拉起 VPN 网关接口），然后 LuCI 刷新一下就能在 `VPN → IPSec VPN Server` 看到。
+第一次安装会跑 `uci-defaults/luci-ipsec-vpnd` 一次性初始化（建 network/firewall/zone + 启用系统 `ipsec` 服务 + 渲染初始 strongSwan 配置 + 拉起 VPN 网关接口），然后 LuCI 刷新一下就能在 `VPN → IPSec VPN Server` 看到。
 
 或者从 release 装（GitHub Actions 自动把每次 main 提交 publish 到 `IPSec VPND Latest Build` release，注意该 release 每次推送会重建，文件名里的版本号会变）：
 
@@ -131,14 +131,14 @@ ls -l *.apk *.ipk
 │   └── zh_Hans/ipsec-vpnd.po      # 简体中文翻译
 ├── root/
 │   ├── etc/config/ipsec-vpnd      # UCI 默认配置（服务默认 enabled=0）
-│   ├── etc/init.d/ipsec-vpnd      # procd init：写 ipsec.conf/secrets、依赖自检、启 starter
+│   ├── usr/lib/ipsec/luci-ipsec-vpnd-render  # UCI → ipsec.conf/ipsec.secrets 渲染器（含依赖自检）
 │   ├── etc/uci-defaults/luci-ipsec-vpnd
 │   │                              # 首次安装一次性：建 network.VPN + firewall
 │   ├── usr/lib/ipsec/luci-ipsec-vpnd-deps
 │   │                              # 依赖自检：init 启动拦截 + LuCI 诊断面板共用
 │   ├── usr/lib/ipsec/luci-ipsec-vpnd-updown
 │   │                              # strongSwan updown 钩子：记录客户端上下线
-│   ├── usr/libexec/rpcd/ipsec-vpnd # rpcd 后端：sessions / clear_history / deps
+│   ├── usr/libexec/rpcd/ipsec-vpnd # rpcd 后端：sessions / clear_history / deps / apply
 │   ├── usr/share/luci/menu.d/luci-app-ipsec-vpnd.json
 │   │                              # LuCI 菜单注册（VPN → IPSec VPN Server）
 │   └── usr/share/rpcd/acl.d/luci-app-ipsec-vpnd.json
@@ -168,7 +168,7 @@ ls -l *.apk *.ipk
 | LuCI 页面顶部出现红色「缺少依赖」 | 页面会直接列出缺哪一项以及对应的安装命令，照着执行即可 |
 | 客户端拨不上，日志说 "no IKE config" | 看 `/etc/config/ipsec-vpnd` 的 `enabled` 是不是 `1`；看 init 日志（`logread \| grep ipsec`） |
 | 客户端拨不上，日志说 "no acceptable proposal" | 多半缺 3DES 插件：装 `strongswan-mod-des` |
-| 系统自带 ipsec 又被启起来抢端口 | 升级 strongswan 包后可能要再跑一次 `uci-defaults/luci-ipsec-vpnd`——本包 init 脚本每次启动前都会重新 stop+disable 系统那个，但只在服务 enabled 时跑 |
+| 服务显示「未运行」但 charon 明明在跑 | 说明有第二个服务实例抢占了 UDP/500、4500。本包不再自建服务，正常情况下只有系统 `ipsec` 一个实例；`ls /etc/rc.d/*ipsec*` 检查是否残留旧版 `ipsec-vpnd` 链接 |
 | 装完 `ipsec0` 上没有 VPN 网关地址 | 执行 `ifup VPN`；本包在安装与服务启动时都会自动执行一次 |
 | GitHub Actions 出包失败 | 看 `Build` workflow 的 step 日志；常见是 host 工具链 apt 装失败、或 apk-tools/po2lmo 编译报错 |
 

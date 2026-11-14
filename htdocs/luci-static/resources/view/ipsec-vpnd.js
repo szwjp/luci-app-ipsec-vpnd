@@ -17,10 +17,10 @@ const callServiceList = rpc.declare({
 	expect: { '': {} }
 });
 
-const callServiceInit = rpc.declare({
-	object: 'rc',
-	method: 'init',
-	params: ['name', 'action']
+const callIpsecApply = rpc.declare({
+	object: 'ipsec-vpnd',
+	method: 'apply',
+	expect: { '': {} }
 });
 
 const callIpsecSessions = rpc.declare({
@@ -42,12 +42,14 @@ const callIpsecDeps = rpc.declare({
 });
 
 function getServiceStatus() {
-	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
+	// charon 由 strongSwan 原生的 `ipsec` 服务托管（strongswan-ipsec 包提供），
+	// 本包不再自建服务实例，避免两个服务抢 UDP 500/4500。
+	return L.resolveDefault(callServiceList('ipsec'), {}).then(function(res) {
 		let isRunning = false;
 		try {
 			// procd_open_instance 未指定实例名时，procd 按 init 脚本 basename
-			// 命名实例为 'ipsec-vpnd'；遍历全部实例，任一 running 即视为运行
-			let instances = res['ipsec-vpnd']['instances'] || {};
+			// 命名实例为 'ipsec'；遍历全部实例，任一 running 即视为运行
+			let instances = res['ipsec']['instances'] || {};
 			for (let name in instances)
 				if (instances[name]['running'])
 					isRunning = true;
@@ -229,12 +231,12 @@ return view.extend({
 			]);
 		};
 
-		// 保存后显式 restart 服务：LuCI 保存走 uci commit，不会触发 procd 的
-		// config.change reload trigger（实测 commit/reload_config 均不重启服务），
-		// 必须显式 rc.init restart 才能让启用/停用即时生效。
+		// 保存后显式应用配置：rpcd 的 apply 方法负责把 UCI 翻译成 ipsec.conf
+		// 再重启 strongSwan 的 ipsec 服务（LuCI 保存只走 uci commit，
+		// 不会触发服务重启，必须显式调用）。
 		m.save = function(ev) {
 			return form.Map.prototype.save.call(this).then(function() {
-				return L.resolveDefault(callServiceInit('ipsec-vpnd', 'restart'));
+				return L.resolveDefault(callIpsecApply(), {});
 			});
 		};
 

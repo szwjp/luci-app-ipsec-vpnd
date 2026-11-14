@@ -77,7 +77,14 @@ if [ "$PKG_MGR" == "apk" ]; then
 export root="${IPKG_INSTROOT}"
 export pkgname="'"$PKG_NAME"'"
 default_postinst
-[ -n "${IPKG_INSTROOT}" ] || { [ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+[ -n "${IPKG_INSTROOT}" ] || {
+	# 旧版本自建的服务实例管着 charon，不先停掉的话，新的 ipsec 服务会因为
+	# UDP 500/4500 被占而静默退出（LuCI 上表现为"未运行"且查不到原因）。
+	[ -x /etc/init.d/ipsec-vpnd ] && { /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1; /etc/init.d/ipsec-vpnd disable >/dev/null 2>&1; }
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable 2>/dev/null; /etc/init.d/ipsec restart 2>/dev/null; }
+	# 新版本不再自建服务实例，清掉旧版本留下的 rc.d 链接
+	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
@@ -92,8 +99,31 @@ export PKG_UPGRADE=1
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
 export pkgname="'"$PKG_NAME"'"
+[ -n "${IPKG_INSTROOT}" ] || {
+	# 升级前停掉旧版本自建的服务实例：它管着 charon，不先停掉，
+	# 新版本的 ipsec 服务会因为 UDP 500/4500 被占而静默退出。
+	/etc/init.d/ipsec-vpnd stop >/dev/null 2>&1
+	/etc/init.d/ipsec-vpnd disable >/dev/null 2>&1
+}
+exit 0
+}' > "$TEMP_DIR/pre-upgrade"
+
+	echo -e '#!/bin/sh
+export PKG_UPGRADE=1
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+. ${IPKG_INSTROOT}/lib/functions.sh
+export root="${IPKG_INSTROOT}"
+export pkgname="'"$PKG_NAME"'"
 default_postinst
-[ -n "${IPKG_INSTROOT}" ] || { [ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+[ -n "${IPKG_INSTROOT}" ] || {
+	# 旧版本自建的服务实例管着 charon，不先停掉的话，新的 ipsec 服务会因为
+	# UDP 500/4500 被占而静默退出（LuCI 上表现为"未运行"且查不到原因）。
+	[ -x /etc/init.d/ipsec-vpnd ] && { /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1; /etc/init.d/ipsec-vpnd disable >/dev/null 2>&1; }
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable 2>/dev/null; /etc/init.d/ipsec restart 2>/dev/null; }
+	# 新版本不再自建服务实例，清掉旧版本留下的 rc.d 链接
+	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
@@ -106,6 +136,12 @@ default_postinst
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
 export pkgname="'"$PKG_NAME"'"
+[ -n "${IPKG_INSTROOT}" ] || {
+	# 本包不再自建服务，charon 由 strongSwan 的 ipsec 服务托管；
+	# 卸载本包时把它一并停掉，避免留下一个没有 conn 的空服务。
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec stop 2>/dev/null; }
+	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+}
 default_prerm' > "$TEMP_DIR/pre-deinstall"
 
 	apk mkpkg \
@@ -119,6 +155,7 @@ default_prerm' > "$TEMP_DIR/pre-deinstall"
 		--info "provides:" \
 		--script "post-install:$TEMP_DIR/post-install" \
 		--script "post-upgrade:$TEMP_DIR/post-upgrade" \
+		--script "pre-upgrade:$TEMP_DIR/pre-upgrade" \
 		--script "pre-deinstall:$TEMP_DIR/pre-deinstall" \
 		--info "depends:libc kmod-tun strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des" \
 		--files "$TEMP_PKG_DIR" \
@@ -149,22 +186,29 @@ else
 [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
-default_postinst $0 $@' > "$TEMP_PKG_DIR/CONTROL/postinst"
-	chmod 0755 "$TEMP_PKG_DIR/CONTROL/postinst"
-
-	echo -e "[ -n "\${IPKG_INSTROOT}" ] || {
-	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+default_postinst $0 $@
+[ -n "\${IPKG_INSTROOT}" ] || {
+	# 旧版本自建的服务实例管着 charon，不先停掉的话，新的 ipsec 服务会因为
+	# UDP 500/4500 被占而静默退出（LuCI 上表现为"未运行"且查不到原因）。
+	[ -x /etc/init.d/ipsec-vpnd ] && { /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1; /etc/init.d/ipsec-vpnd disable >/dev/null 2>&1; }
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable >/dev/null 2>&1; /etc/init.d/ipsec restart >/dev/null 2>&1; }
+	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
 	/sbin/ifup VPN >/dev/null 2>&1
 	exit 0
-}" > "$TEMP_PKG_DIR/CONTROL/postinst-pkg"
-	chmod 0755 "$TEMP_PKG_DIR/CONTROL/postinst-pkg"
+}' > "$TEMP_PKG_DIR/CONTROL/postinst"
+	chmod 0755 "$TEMP_PKG_DIR/CONTROL/postinst"
 
 	echo -e '#!/bin/sh
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
+[ -n "\${IPKG_INSTROOT}" ] || {
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec stop 2>/dev/null; }
+	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+}
 default_prerm $0 $@' > "$TEMP_PKG_DIR/CONTROL/prerm"
 	chmod 0755 "$TEMP_PKG_DIR/CONTROL/prerm"
 

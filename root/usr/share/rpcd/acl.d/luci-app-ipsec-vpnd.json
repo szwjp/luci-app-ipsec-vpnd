@@ -11,7 +11,8 @@
 		},
 		"write": {
 			"ubus": {
-				"rc": [ "init" ]
+				"rc": [ "init" ],
+				"ipsec-vpnd": [ "apply" ]
 			},
 			"uci": [ "ipsec-vpnd" ]
 		}
