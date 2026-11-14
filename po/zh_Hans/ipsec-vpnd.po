@@ -91,6 +91,10 @@ msgstr "当前没有 VPN 客户端在线"
 msgid "NOT RUNNING"
 msgstr "未运行"
 
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:53
+msgid "DISABLED"
+msgstr "已停用"
+
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:99
 msgid "Password"
 msgstr "密码"

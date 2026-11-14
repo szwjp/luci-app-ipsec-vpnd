@@ -41,27 +41,30 @@ const callIpsecDeps = rpc.declare({
 	expect: { '': {} }
 });
 
+const callIpsecStatus = rpc.declare({
+	object: 'ipsec-vpnd',
+	method: 'status',
+	expect: { '': {} }
+});
+
 function getServiceStatus() {
-	// charon 由 strongSwan 原生的 `ipsec` 服务托管（strongswan-ipsec 包提供），
-	// 本包不再自建服务实例，避免两个服务抢 UDP 500/4500。
-	return L.resolveDefault(callServiceList('ipsec'), {}).then(function(res) {
-		let isRunning = false;
-		try {
-			// procd_open_instance 未指定实例名时，procd 按 init 脚本 basename
-			// 命名实例为 'ipsec'；遍历全部实例，任一 running 即视为运行
-			let instances = res['ipsec']['instances'] || {};
-			for (let name in instances)
-				if (instances[name]['running'])
-					isRunning = true;
-		} catch (e) { }
-		return isRunning;
+	// 后端直接报两件事：UCI 里的 enabled 总开关，以及系统 ipsec 服务是否在跑。
+	// 只看服务状态会出现"开关是关的、服务却在跑"这种自相矛盾的情况。
+	return L.resolveDefault(callIpsecStatus(), {}).then(function(res) {
+		return {
+			enabled: (res && res.enabled === '1'),
+			running: !!(res && res.running)
+		};
 	});
 }
 
-function renderStatus(isRunning) {
+function renderStatus(st) {
 	let spanTemp = '<em><span style="color:%s"><strong>%s %s</strong></span></em>';
 	let renderHTML;
-	if (isRunning)
+
+	if (!st.enabled)
+		renderHTML = spanTemp.format('orange', _('IPSec VPN'), _('DISABLED'));
+	else if (st.running)
 		renderHTML = spanTemp.format('green', _('IPSec VPN'), _('RUNNING'));
 	else
 		renderHTML = spanTemp.format('red', _('IPSec VPN'), _('NOT RUNNING'));
@@ -72,6 +75,15 @@ function renderStatus(isRunning) {
 return view.extend({
 	render() {
 		let m, s, o;
+
+		// 配置落盘成功后，渲染 ipsec.conf 并按 enabled 启停服务。
+		// 挂在 "uci-applied" 上是为了保证读到的是**已经落盘**的配置。
+		if (!document.ipsecVpndApplyHook) {
+			document.ipsecVpndApplyHook = true;
+			document.addEventListener('uci-applied', function() {
+				L.resolveDefault(callIpsecApply(), {});
+			});
+		}
 
 		m = new form.Map('ipsec-vpnd', _('IPSec VPN Server'),
 			_('IPSec VPN connectivity using the native built-in VPN Client on iOS or Android (IKEv1 with PSK and Xauth)'));
@@ -236,13 +248,14 @@ return view.extend({
 			]);
 		};
 
-		// 保存后显式应用配置：rpcd 的 apply 方法负责把 UCI 翻译成 ipsec.conf
-		// 再重启 strongSwan 的 ipsec 服务（LuCI 保存只走 uci commit，
-		// 不会触发服务重启，必须显式调用）。
+		// 保存只负责把改动交给 LuCI 暂存；真正落盘（apply）由页面在所有 map
+		// 保存完之后统一触发，落盘成功时 LuCI 会在 document 上派发 "uci-applied"。
+		//
+		// 渲染配置、启停服务必须放在那个事件里：早一步的话渲染器读到的是
+		// 落盘前的旧值 —— 结果就是"启用"开关点了没反应（配置存下去了，
+		// ipsec.conf 还是按旧的 enabled 生成的）。
 		m.save = function(ev) {
-			return form.Map.prototype.save.call(this).then(function() {
-				return L.resolveDefault(callIpsecApply(), {});
-			});
+			return form.Map.prototype.save.call(this);
 		};
 
 		return m.render();

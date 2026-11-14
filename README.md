@@ -10,7 +10,7 @@ IKEv1 + PSK + Xauth（账号密码），目标用户是家用 / 小公司路由�
 
 ## 功能
 
-- **VPN 服务启停**（uhttpd → LuCI → 控制 strongSwan 原生的 `ipsec` 服务，即 `procd` 托管的 `starter` + `charon`）
+- **VPN 服务启停**（uhttpd → LuCI → 控制 strongSwan 原生的 `ipsec` 服务，即 `procd` 托管的 `starter` + `charon`）；「启用」是总开关，关掉时服务会停、conn 会从 `ipsec.conf` 里移除、凭据文件也会清掉
 - **账号 / 密码 / PSK 配置** 写在 `/etc/config/ipsec-vpnd`，由 `luci-ipsec-vpnd-render` 翻译成 strongSwan 的 `ipsec.conf` + `ipsec.secrets`
 - **首次安装自动初始化**：建 `network.VPN` 设备（绑 `ipsec0`）+ `firewall.ike/ipsec/ah/esp` 入站规则 + `firewall.VPN` zone + 端口转发；只跑一次，`/etc/config/ipsec-vpnd` 里的 `initialized` 标记防止升级时覆盖用户后续自定义
 - **不再自建服务实例**：本包不提供自己的 `ipsec-vpnd` 服务，charon 统一交给 strongSwan 自带的 `ipsec` 服务托管（`strongswan-ipsec` 包提供），从根本上避免两个服务抢 UDP/500、4500——抢端口时后启动的那个会**静默退出**，LuCI 上只显示「未运行」却查不到原因
@@ -23,7 +23,7 @@ UCI 路径 `ipsec-vpnd.@ipsec[0]`，字段：
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `enabled` | `0` | 总开关 |
+| `enabled` | `0` | 总开关。关掉 = 服务停 + 不加载 conn + 清除 `ipsec.secrets` |
 | `clientip` | `10.9.8.10/24` | 客户端地址池（CIDR），用 strongSwan 的 `rightsourceip` 推给拨号端 |
 | `clientdns` | `10.9.8.1` | 推给客户端的 DNS（即 VPN 网关 IP） |
 | `account` | `vpnuser` | Xauth 用户名 |
@@ -149,6 +149,16 @@ ls -l *.apk *.ipk
 
 > `fakeroot` 不能省：apk v3 的 `mkpkg` 直接按文件属主写包，没有 fakeroot 就会把构建者的 uid 打进包里，装出来的文件属主不是 root。
 > macOS 上脚本本身能跑（已把 `mktemp -p` / `find -printf` / `sha256sum` 换成可移植写法），但产物属主仍是本地用户，仅适合调试，正式发布请走 CI。
+>
+> **`po2lmo` 必须是真的那个**（CI 里从 luci 源码编译）。LuCI 的 `.lmo` 不是 GNU MO 格式，
+> 用 `msgfmt` 转出来的 MO 文件能被 `msgunfmt` 读，但 LuCI 的加载器读不了 —— 装上去的表现是
+> **页面所有文案退回英文**。本地要构建的话：
+>
+> ```sh
+> git clone --depth 1 --filter=blob:none --sparse https://github.com/openwrt/luci.git
+> cd luci/modules/luci-base/src && make po2lmo   # 产物在当前目录
+> export PATH="$PWD:$PATH"
+> ```
 
 `build-pkg.sh` 用了仓库里那个**专为本包定制的最小工具链**（apk-tools 自编译 + po2lmo 自编译 + ipkg-build），不依赖完整 OpenWrt SDK 编译环境；这就是为什么 `build.yml` 跑得很快（~40s）。所有 actions 都用 Node 24 版（`actions/checkout@v5` / `actions/upload-artifact@v6` / `softprops/action-gh-release@v3`）。
 

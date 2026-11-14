@@ -81,10 +81,15 @@ default_postinst
 	# 旧版本自建的服务实例管着 charon，不先停掉的话，新的 ipsec 服务会因为
 	# UDP 500/4500 被占而静默退出（LuCI 上表现为"未运行"且查不到原因）。
 	[ -x /etc/init.d/ipsec-vpnd ] && { /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1; /etc/init.d/ipsec-vpnd disable >/dev/null 2>&1; }
-	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable 2>/dev/null; /etc/init.d/ipsec restart 2>/dev/null; }
 	# 新版本不再自建服务实例，清掉旧版本留下的 rc.d 链接
 	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+	# 先渲染再启停服务：服务启动时读到的必须是新的 ipsec.conf
 	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
+	if [ "$(uci -q get ipsec-vpnd.ipsec.enabled)" = "1" ]; then
+		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable 2>/dev/null; /etc/init.d/ipsec restart 2>/dev/null; }
+	else
+		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+	fi
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	rm -f /tmp/luci-indexcache.*
@@ -122,10 +127,15 @@ default_postinst
 	# 旧版本自建的服务实例管着 charon，不先停掉的话，新的 ipsec 服务会因为
 	# UDP 500/4500 被占而静默退出（LuCI 上表现为"未运行"且查不到原因）。
 	[ -x /etc/init.d/ipsec-vpnd ] && { /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1; /etc/init.d/ipsec-vpnd disable >/dev/null 2>&1; }
-	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable 2>/dev/null; /etc/init.d/ipsec restart 2>/dev/null; }
 	# 新版本不再自建服务实例，清掉旧版本留下的 rc.d 链接
 	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+	# 先渲染再启停服务：服务启动时读到的必须是新的 ipsec.conf
 	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
+	if [ "$(uci -q get ipsec-vpnd.ipsec.enabled)" = "1" ]; then
+		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable 2>/dev/null; /etc/init.d/ipsec restart 2>/dev/null; }
+	else
+		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
+	fi
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	rm -f /tmp/luci-indexcache.*
@@ -195,9 +205,14 @@ default_postinst $0 $@
 	# 旧版本自建的服务实例管着 charon，不先停掉的话，新的 ipsec 服务会因为
 	# UDP 500/4500 被占而静默退出（LuCI 上表现为"未运行"且查不到原因）。
 	[ -x /etc/init.d/ipsec-vpnd ] && { /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1; /etc/init.d/ipsec-vpnd disable >/dev/null 2>&1; }
-	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable >/dev/null 2>&1; /etc/init.d/ipsec restart >/dev/null 2>&1; }
 	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
+	# 先渲染再启停服务：服务启动时读到的必须是新的 ipsec.conf
 	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
+	if [ "\$(uci -q get ipsec-vpnd.ipsec.enabled)" = "1" ]; then
+		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable >/dev/null 2>&1; /etc/init.d/ipsec restart >/dev/null 2>&1; }
+	else
+		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable >/dev/null 2>&1; /etc/init.d/ipsec stop >/dev/null 2>&1; }
+	fi
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	rm -f /tmp/luci-indexcache.*

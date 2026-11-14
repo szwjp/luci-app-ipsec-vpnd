@@ -113,6 +113,14 @@ check "rightdns 取自 UCI" "1" "$(count_matches 'rightdns=10.9.8.1' "$TMP/etc/i
 check "secrets 含 PSK" "1" "$(count_matches '^: PSK "psk1"$' "$TMP/etc/ipsec.secrets")"
 check "secrets 含 XAuth" "1" "$(count_matches '^acc1 : XAUTH "pw1"$' "$TMP/etc/ipsec.secrets")"
 check "secrets 权限 0600" "600" "$(file_mode "$TMP/etc/ipsec.secrets")"
+check "首次渲染报告 changed" "changed" "$(cat "$TMP/out")"
+
+# 幂等：同样的配置再渲染一次，报告 unchanged 且不改动文件
+before="$(cksum "$TMP/etc/ipsec.conf")"
+rc="$(run_render "$TMP/uci")"
+check "重复渲染退出码 0" "0" "$rc"
+check "重复渲染报告 unchanged" "unchanged" "$(cat "$TMP/out")"
+check "重复渲染不改文件" "$before" "$(cksum "$TMP/etc/ipsec.conf")"
 
 # --- 2. enabled=0 ----------------------------------------------------------
 cat > "$TMP/uci" <<'EOF'
@@ -128,6 +136,7 @@ rc="$(run_render "$TMP/uci")"
 check "enabled=0 时渲染成功" "0" "$rc"
 check "enabled=0 时不生成 conn" "0" "$(count_matches '^conn xauth_psk$' "$TMP/etc/ipsec.conf")"
 check "enabled=0 时清掉遗留 secrets" "0" "$([ -e "$TMP/etc/ipsec.secrets" ] && echo 1 || echo 0)"
+check "enabled=0 时报告 changed" "changed" "$(cat "$TMP/out")"
 
 # --- 3. 依赖自检不通过 -----------------------------------------------------
 cat > "$TMP/uci" <<'EOF'

@@ -82,6 +82,10 @@ msgstr ""
 msgid "NOT RUNNING"
 msgstr ""
 
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:53
+msgid "DISABLED"
+msgstr ""
+
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:99
 msgid "Password"
 msgstr ""

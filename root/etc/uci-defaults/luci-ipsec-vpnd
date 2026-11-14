@@ -9,8 +9,13 @@
 
 # charon 交由 strongSwan 原生的 `ipsec` 服务托管（strongswan-ipsec 包提供），
 # 本包不再自建服务实例 —— 两个服务同时跑会抢 UDP 500/4500，后启动的那个
-# 会静默退出，LuCI 上显示成"未运行"却查不到原因。这里确保它是开机自启的。
-[ -x /etc/init.d/ipsec ] && /etc/init.d/ipsec enable
+# 会静默退出，LuCI 上显示成"未运行"却查不到原因。这里按 enabled 决定
+# 它是否开机自启（enabled 是总开关，关掉时服务也不该跑）。
+if [ "$(uci -q get ipsec-vpnd.ipsec.enabled)" = "1" ]; then
+	[ -x /etc/init.d/ipsec ] && /etc/init.d/ipsec enable
+else
+	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable; /etc/init.d/ipsec stop; }
+fi
 
 uci -q batch <<-EOF >/dev/null
 	delete firewall.ipsecd

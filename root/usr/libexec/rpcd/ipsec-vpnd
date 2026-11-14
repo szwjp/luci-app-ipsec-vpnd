@@ -37,7 +37,7 @@ flock_unlock() {
 }
 
 list_methods() {
-	printf '%s\n' '{"sessions":{},"clear_history":{},"deps":{},"apply":{}}'
+	printf '%s\n' '{"sessions":{},"clear_history":{},"deps":{},"apply":{},"status":{}}'
 }
 
 json_err() {
@@ -259,9 +259,9 @@ END {
 }
 
 apply() {
-	# 把 UCI 配置渲染成 strongSwan 配置，然后重启服务。
+	# 把 UCI 配置渲染成 strongSwan 配置，然后按 enabled 启停服务。
 	# charon 由 strongSwan 原生的 `ipsec` 服务托管，本包不再自建服务实例。
-	local render_out render_rc
+	local render_out render_rc enabled
 	render_out="$(/usr/lib/ipsec/luci-ipsec-vpnd-render 2>&1)"
 	render_rc=$?
 	if [ "$render_rc" -ne 0 ]; then
@@ -274,11 +274,42 @@ apply() {
 		return 1
 	fi
 
-	/etc/init.d/ipsec restart >/dev/null 2>&1
+	# enabled 是总开关：关掉时连服务一起停，否则页面上开关是"关"、
+	# 服务却还在跑，charon 也不会因为配置里没有 conn 就自己退出。
+	enabled="$(uci -q get ipsec-vpnd.ipsec.enabled)"
+	if [ "$enabled" = "1" ]; then
+		/etc/init.d/ipsec enable >/dev/null 2>&1
+		# 只有配置真的变了才重启服务：别的页面触发一次 apply 不应该
+		# 把正在跑的 VPN 连接踢掉。
+		if [ "$render_out" = "changed" ] || ! /etc/init.d/ipsec status >/dev/null 2>&1; then
+			/etc/init.d/ipsec restart >/dev/null 2>&1
+		fi
+	else
+		/etc/init.d/ipsec disable >/dev/null 2>&1
+		/etc/init.d/ipsec stop >/dev/null 2>&1
+	fi
 
 	json_init
 	json_add_int code 0
 	json_add_string message "applied"
+	json_dump
+}
+
+status() {
+	# 页面状态用：enabled 来自 UCI，running 来自系统 ipsec 服务。
+	# 两者分开报，前端才能区分"没启用"和"启用了但没跑起来"。
+	local enabled running=0
+	enabled="$(uci -q get ipsec-vpnd.ipsec.enabled)"
+	[ "$enabled" = "1" ] || enabled="0"
+
+	if [ -x /etc/init.d/ipsec ]; then
+		/etc/init.d/ipsec status >/dev/null 2>&1 && running=1
+	fi
+
+	json_init
+	json_add_int code 0
+	json_add_string enabled "$enabled"
+	json_add_int running "$running"
 	json_dump
 }
 
@@ -359,6 +390,7 @@ main() {
 				clear_history) clear_history ;;
 				deps) deps ;;
 				apply) apply ;;
+				status) status ;;
 				*) json_err "unknown method" ;;
 			esac
 			;;

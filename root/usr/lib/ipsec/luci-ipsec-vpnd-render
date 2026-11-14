@@ -47,7 +47,13 @@ config_get vt_account "ipsec" "account" "$vt_account"
 config_get vt_password "ipsec" "password" "$vt_password"
 config_get vt_secret "ipsec" "secret" "$vt_secret"
 
-cat > /etc/ipsec.conf <<EOF
+# 先写到临时文件，再和现有文件比对：内容没变就不动文件。
+# 这样 rpcd 的 apply 才知道要不要重启服务 —— 别的页面触发一次 apply
+# 不应该把正在跑的 VPN 连接踢掉。
+TMP_CONF="$(mktemp /tmp/.ipsec.conf.XXXXXX)"
+TMP_SECRETS="$(mktemp /tmp/.ipsec.secrets.XXXXXX)"
+
+cat > "$TMP_CONF" <<EOF
 # ipsec.conf - strongSwan IPsec configuration file
 #
 # 由 luci-app-ipsec-vpnd 自动生成，请勿手工修改：
@@ -63,7 +69,7 @@ config setup
 EOF
 
 if [ "$vt_enabled" = "1" ]; then
-	cat >> /etc/ipsec.conf <<EOF
+	cat >> "$TMP_CONF" <<EOF
 
 conn xauth_psk
 	keyexchange=ikev1
@@ -89,17 +95,43 @@ fi
 if [ "$vt_enabled" = "1" ]; then
 	# secrets 含 PSK 与 XAUTH 密码，用 177 umask 创建并收紧权限，避免本地用户读取
 	umask 177
-	cat > /etc/ipsec.secrets <<EOF
+	cat > "$TMP_SECRETS" <<EOF
 # /etc/ipsec.secrets - strongSwan IPsec secrets file
 # 由 luci-app-ipsec-vpnd 自动生成，请勿手工修改。
 : PSK "$vt_secret"
 $vt_account : XAUTH "$vt_password"
 EOF
 	umask 022
-	chmod 600 /etc/ipsec.secrets
 else
 	# 停用时清掉遗留的凭据，避免旧口令继续留在磁盘上
-	rm -f /etc/ipsec.secrets
+	: > "$TMP_SECRETS"
 fi
 
+changed=0
+if ! cmp -s "$TMP_CONF" /etc/ipsec.conf; then
+	changed=1
+fi
+if [ "$vt_enabled" = "1" ]; then
+	if ! cmp -s "$TMP_SECRETS" /etc/ipsec.secrets; then
+		changed=1
+	fi
+elif [ -e /etc/ipsec.secrets ]; then
+	# 停用状态下要把遗留的凭据文件清掉
+	changed=1
+fi
+
+if [ "$changed" = "1" ]; then
+	cat "$TMP_CONF" > /etc/ipsec.conf
+	if [ "$vt_enabled" = "1" ]; then
+		cat "$TMP_SECRETS" > /etc/ipsec.secrets
+		chmod 600 /etc/ipsec.secrets
+	else
+		rm -f /etc/ipsec.secrets
+	fi
+	echo "changed"
+else
+	echo "unchanged"
+fi
+
+rm -f "$TMP_CONF" "$TMP_SECRETS"
 exit 0
