@@ -85,6 +85,8 @@ default_postinst
 	# 新版本不再自建服务实例，清掉旧版本留下的 rc.d 链接
 	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
 	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
+	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
+	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
@@ -124,6 +126,8 @@ default_postinst
 	# 新版本不再自建服务实例，清掉旧版本留下的 rc.d 链接
 	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
 	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
+	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
+	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
@@ -194,6 +198,8 @@ default_postinst $0 $@
 	[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec enable >/dev/null 2>&1; /etc/init.d/ipsec restart >/dev/null 2>&1; }
 	rm -f /etc/rc.d/S*ipsec-vpnd /etc/rc.d/K*ipsec-vpnd
 	/usr/lib/ipsec/luci-ipsec-vpnd-render >/dev/null 2>&1
+	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
+	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null

@@ -96,6 +96,9 @@ EOF
 uci -q set ipsec-vpnd.ipsec.initialized='1'
 uci -q commit ipsec-vpnd
 
+# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
+chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
+
 # 清理旧版本自建的 ipsec-vpnd 服务残留（升级路径）。新的版本不再提供服务实例，
 # charon 统一由 strongSwan 的 ipsec 服务托管。
 /etc/init.d/ipsec-vpnd stop >/dev/null 2>&1

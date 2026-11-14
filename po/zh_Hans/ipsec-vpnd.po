@@ -16,6 +16,10 @@ msgstr "账户"
 msgid "Assigned IP"
 msgstr "分配的 IP"
 
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:186
+msgid "Assigned IP pending"
+msgstr "分配地址未就绪"
+
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:162
 msgid "Clear all client history records?"
 msgstr "确定要清除所有客户端历史记录吗？"

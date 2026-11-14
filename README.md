@@ -152,6 +152,24 @@ ls -l *.apk *.ipk
 
 `build-pkg.sh` 用了仓库里那个**专为本包定制的最小工具链**（apk-tools 自编译 + po2lmo 自编译 + ipkg-build），不依赖完整 OpenWrt SDK 编译环境；这就是为什么 `build.yml` 跑得很快（~40s）。所有 actions 都用 Node 24 版（`actions/checkout@v5` / `actions/upload-artifact@v6` / `softprops/action-gh-release@v3`）。
 
+## 测试
+
+```sh
+sh tests/run-all.sh
+```
+
+三组离线测试，不依赖路由器：
+
+- `render-test.sh` —— UCI → `ipsec.conf`/`ipsec.secrets` 的映射、secrets 权限 0600、
+  停用时不留 conn、依赖缺失时不生成配置
+- `sessions-parse-test.sh` —— 客户端列表解析：控制字符清洗、旧版脏行丢弃、
+  在线但无地址时打 `vip_pending`、历史上限 200 条
+- `sanitize-test.sh` —— 控制字符清洗工具
+
+脚本用的是 POSIX sh + awk，**在 OpenWrt 的 busybox 上也能跑**（CI 里跑的是
+GNU 环境，所以改完记得也在设备上跑一遍：busybox 的 `tr` 不认 `[:cntrl:]`
+字符类，会把字面字符删掉——这个坑就是这么漏出去的）。
+
 ## CI
 
 `.github/workflows/` 下两个 workflow：
@@ -164,6 +182,11 @@ ls -l *.apk *.ipk
 ```
 .
 ├── Makefile                 # OpenWrt 包定义：LUCI_TITLE / LUCI_DEPENDS / PKG_*
+├── tests/                   # 离线回归测试（不依赖路由器，CI 里也会跑）
+│   ├── run-all.sh           # 跑全部测试
+│   ├── render-test.sh       # UCI → ipsec.conf / ipsec.secrets 渲染
+│   ├── sessions-parse-test.sh # 客户端列表解析（控制字符、脏行、历史上限）
+│   └── sanitize-test.sh     # 控制字符清洗
 ├── htdocs/luci-static/resources/view/ipsec-vpnd.js
 │                            # LuCI web UI（配置表单 + 在线客户端表 + 依赖诊断）
 ├── po/
@@ -178,6 +201,8 @@ ls -l *.apk *.ipk
 │   │                              # 依赖自检：init 启动拦截 + LuCI 诊断面板共用
 │   ├── usr/lib/ipsec/luci-ipsec-vpnd-updown
 │   │                              # strongSwan updown 钩子：记录客户端上下线
+│   ├── usr/lib/ipsec/luci-ipsec-vpnd-sanitize
+│   │                              # 剥掉用户名里的控制字符（busybox 的 tr 不认字符类）
 │   ├── usr/libexec/rpcd/ipsec-vpnd # rpcd 后端：sessions / clear_history / deps / apply
 │   ├── usr/share/luci/menu.d/luci-app-ipsec-vpnd.json
 │   │                              # LuCI 菜单注册（VPN → IPSec VPN Server）

@@ -9,6 +9,10 @@ msgstr ""
 msgid "Assigned IP"
 msgstr ""
 
+#: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:186
+msgid "Assigned IP pending"
+msgstr ""
+
 #: applications/luci-app-ipsec-vpnd/htdocs/luci-static/resources/view/ipsec-vpnd.js:162
 msgid "Clear all client history records?"
 msgstr ""

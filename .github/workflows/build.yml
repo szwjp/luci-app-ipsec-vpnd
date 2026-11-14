@@ -68,6 +68,10 @@ jobs:
           curl -fLO "https://raw.githubusercontent.com/openwrt/openwrt/master/scripts/ipkg-build"
           sudo install -m0755 ipkg-build /usr/local/bin/ipkg-build
 
+      - name: Run offline tests
+        run: |
+          sh tests/run-all.sh
+
       - name: Build packages (apk + ipk)
         run: |
           fakeroot bash .github/build-pkg.sh apk "${{ github.run_number }}"

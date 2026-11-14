@@ -180,10 +180,15 @@ return view.extend({
 			let renderRows = function(sessions) {
 				clientBody.textContent = '';
 				sessions.forEach(function(s) {
+					// 在线但还没拿到虚拟地址：CHILD_SA 尚未装好，或解析不到 /32
+					// 选择器。给一句明确提示，别让用户对着 "-" 猜。
+					let vipText = s.vip;
+					if (!vipText)
+						vipText = s.vip_pending ? _('Assigned IP pending') : '-';
 					clientBody.appendChild(E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td' }, s.user || '-'),
 						E('td', { 'class': 'td' }, s.remote || '-'),
-						E('td', { 'class': 'td' }, s.vip || '-'),
+						E('td', { 'class': 'td' }, vipText),
 						E('td', { 'class': 'td' }, s.age || '-'),
 						E('td', { 'class': 'td' }, s.online ? _('Connected') : _('Disconnected'))
 					]));
