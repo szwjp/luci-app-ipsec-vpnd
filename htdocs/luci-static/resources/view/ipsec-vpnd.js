@@ -35,6 +35,12 @@ const callClearHistory = rpc.declare({
 	expect: { '': {} }
 });
 
+const callIpsecDeps = rpc.declare({
+	object: 'ipsec-vpnd',
+	method: 'deps',
+	expect: { '': {} }
+});
+
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('ipsec-vpnd'), {}).then(function(res) {
 		let isRunning = false;
@@ -81,6 +87,43 @@ return view.extend({
 			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
 				E('p', { id: 'service_status' }, _('Collecting data...'))
 			]);
+		}
+
+		// 依赖诊断：strongSwan 运行时不全时，页面直接说明缺什么、怎么装。
+		// 没有这块的话，用户只会看到 NOT RUNNING，无从判断是缺包还是配置问题。
+		s = m.section(form.TypedSection);
+		s.anonymous = true;
+		s.render = function() {
+			let box = E('div', { class: 'cbi-section-error' });
+			let wrap = E('div', { id: 'ipsec_vpnd_deps_wrap', style: 'display:none' }, [ box ]);
+
+			let update = function() {
+				return L.resolveDefault(callIpsecDeps(), {}).then(function(res) {
+					let files = (res && Array.isArray(res.files)) ? res.files : [];
+					let missing = files.filter(function(d) { return d.status !== 'ok'; });
+					if (missing.length === 0) {
+						wrap.style.display = 'none';
+						return;
+					}
+					wrap.style.display = '';
+					box.textContent = '';
+					box.appendChild(E('h3', {}, _('Missing dependencies')));
+					missing.forEach(function(d) {
+						box.appendChild(E('p', {}, d.detail || d.key));
+					});
+					box.appendChild(E('p', {}, _('Install the missing packages with:')));
+					let mgr = (res && res.pkg_mgr === 'opkg') ? 'opkg' : 'apk';
+					let cmd = (mgr === 'opkg')
+						? 'opkg update && opkg install strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des'
+						: 'apk update && apk add strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des';
+					box.appendChild(E('pre', {}, cmd));
+				});
+			};
+
+			poll.add(update, 15);
+			update();
+
+			return wrap;
 		}
 
 		s = m.section(form.NamedSection, 'ipsec', 'service');

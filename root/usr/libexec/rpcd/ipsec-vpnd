@@ -37,7 +37,7 @@ flock_unlock() {
 }
 
 list_methods() {
-	printf '%s\n' '{"sessions":{},"clear_history":{}}'
+	printf '%s\n' '{"sessions":{},"clear_history":{},"deps":{}}'
 }
 
 json_err() {
@@ -217,6 +217,62 @@ END {
 	return $rc
 }
 
+deps() {
+	# 运行时依赖自检：文件类依赖 + 软件包安装状态。
+	# 结果给 LuCI 的依赖诊断面板用；缺失时 init 脚本也会拒绝启动。
+	local files_out files_rc pkgs_out pkgs_rc
+	files_out="$(/usr/lib/ipsec/luci-ipsec-vpnd-deps files)"
+	files_rc=$?
+	pkgs_out="$(/usr/lib/ipsec/luci-ipsec-vpnd-deps pkgs)"
+	pkgs_rc=$?
+
+	local ok=1
+	[ "$files_rc" -eq 0 ] || ok=0
+	[ "$pkgs_rc" -eq 0 ] || ok=0
+
+	json_init
+	json_add_int code 0
+	json_add_int ok "$ok"
+
+	# 包管理器名：安装命令要用对应的那个（apk / opkg）
+	local pkg_mgr="apk"
+	if ! command -v apk >/dev/null 2>&1 && command -v opkg >/dev/null 2>&1; then
+		pkg_mgr="opkg"
+	fi
+	json_add_string pkg_mgr "$pkg_mgr"
+
+	local oldifs="$IFS"
+	local line key rest st det
+	IFS='
+'
+	json_add_array files
+	for line in $files_out; do
+		[ -z "$line" ] && continue
+		key="${line%%|*}"; rest="${line#*|}"; st="${rest%%|*}"; det="${rest#*|}"
+		json_add_object ""
+		json_add_string key "$key"
+		json_add_string status "$st"
+		json_add_string detail "$det"
+		json_close_object
+	done
+	json_close_array
+
+	json_add_array packages
+	for line in $pkgs_out; do
+		[ -z "$line" ] && continue
+		key="${line%%|*}"; rest="${line#*|}"; st="${rest%%|*}"; det="${rest#*|}"
+		json_add_object ""
+		json_add_string key "$key"
+		json_add_string status "$st"
+		json_add_string detail "$det"
+		json_close_object
+	done
+	json_close_array
+	IFS="$oldifs"
+
+	json_dump
+}
+
 clear_history() {
 	flock_lock
 	rm -f "$STATE_FILE" "$SESSIONS_TMP"
@@ -236,6 +292,7 @@ main() {
 			case "$2" in
 				sessions) sessions ;;
 				clear_history) clear_history ;;
+				deps) deps ;;
 				*) json_err "unknown method" ;;
 			esac
 			;;

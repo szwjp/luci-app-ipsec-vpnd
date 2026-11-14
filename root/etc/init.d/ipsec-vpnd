@@ -42,6 +42,31 @@ start_service() {
 	config_get_bool vt_enabled "ipsec" "enabled" "0"
 	[ "$vt_enabled" -eq "0" ] && return 1
 
+	# 依赖自检：strongSwan 运行时不全时明确报错并拒绝启动。
+	# 没有这一步的话，缺包的表现是 LuCI 上一句 NOT RUNNING，用户无从判断缺什么。
+	if [ -x /usr/lib/ipsec/luci-ipsec-vpnd-deps ]; then
+		local deps_out deps_rc
+		deps_out="$(/usr/lib/ipsec/luci-ipsec-vpnd-deps files)"
+		deps_rc=$?
+		if [ "$deps_rc" -ne 0 ]; then
+			local oldifs="$IFS"
+			IFS='
+'
+			for line in $deps_out; do
+				case "$line" in
+					*'|missing|'*)
+						logger -t ipsec-vpnd "依赖缺失: ${line#*|missing|}"
+						;;
+				esac
+			done
+			IFS="$oldifs"
+			logger -t ipsec-vpnd "strongSwan 运行时不完整，IPSec VPN 服务未启动。" \
+				"请先执行 apk update，再安装: strongswan-minimal strongswan-mod-xauth-generic" \
+				"strongswan-mod-kernel-libipsec strongswan-mod-des"
+			return 1
+		fi
+	fi
+
 	# 系统 strongswan 的 ipsec 服务与本服务共用 charon 及 UDP 500/4500，
 	# 必须停掉并禁用来避免抢端口。每次启动都重新执行，防止系统 ipsec
 	# 被升级或手动重新启用后再次抢占。
@@ -108,6 +133,10 @@ EOF
 	procd_set_param respawn
 
 	procd_close_instance
+
+	# 拉起 VPN 网关接口（ipsec0 上的 VPN 网关地址）。ipsec0 由 charon 启动后
+	# 才出现，netifd 会等设备就绪后重试，这样装完即可用，不用手动 ifup VPN。
+	/sbin/ifup VPN >/dev/null 2>&1
 }
 
 stop_service() {

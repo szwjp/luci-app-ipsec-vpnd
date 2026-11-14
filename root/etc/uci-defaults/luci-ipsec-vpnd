@@ -94,5 +94,9 @@ EOF
 uci -q set ipsec-vpnd.ipsec.initialized='1'
 uci -q commit ipsec-vpnd
 
+# 立即拉起 VPN 网关接口。ipsec0 由 charon 启动后才出现，netifd 会等设备
+# 就绪后重试，这样装完就能用，不必手动 ifup VPN。
+/sbin/ifup VPN >/dev/null 2>&1
+
 rm -f /tmp/luci-indexcache
 exit 0

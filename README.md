@@ -15,6 +15,7 @@ IKEv1 + PSK + Xauth（账号密码），目标用户是家用 / 小公司路由�
 - **首次安装自动初始化**：建 `network.VPN` 设备（绑 `ipsec0`）+ `firewall.ike/ipsec/ah/esp` 入站规则 + `firewall.VPN` zone + 端口转发；只跑一次，`/etc/config/ipsec-vpnd` 里的 `initialized` 标记防止升级时覆盖用户后续自定义
 - **和系统自带的 `ipsec` 服务冲突处理**：每次启动前都 `stop && disable` 系统那个，防止 charon 抢 UDP/500、4500
 - **菜单位置**：`VPN → IPSec VPN Server`（order 30）
+- **依赖自检与诊断**：服务启动前检查 strongSwan 运行时是否完整，缺失时拒绝启动并写明确日志；LuCI 页面顶部直接列出缺哪一项、给出对应安装命令
 
 ## 界面与配置项
 
@@ -29,49 +30,67 @@ UCI 路径 `ipsec-vpnd.@ipsec[0]`，字段：
 | `password` | `changeme` | Xauth 密码 |
 | `secret` | `changeme` | IKE PSK 预共享密钥 |
 
-VPN 客户端拨号后会拿到 `clientip` 池里一个地址，`clientdns` 指向 VPN 网关（路由器上的 `ipsec0` IP，初始化脚本里按 LAN 前两段、第三段 +1 自动算出来）。
+VPN 客户端拨号后会拿到 `clientip` 池里一个地址，`clientdns` 指向 VPN 网关（路由器上的 `ipsec0` IP，固定为 `10.9.8.1`）。
 
 ## 依赖
 
-`Makefile` 里 `LUCI_DEPENDS` 列的运行时依赖：
+本包是纯 LuCI 前端 + 脚本，运行时依赖 strongSwan。**安装本包时会自动拉取下面这些依赖**（apk / ipk 的 `depends` 已声明）：
 
+| 包 | 作用 |
+|---|---|
+| `strongswan-minimal` | strongSwan 最小集，含 charon、starter（`/usr/lib/ipsec/starter`）、stroke 插件 |
+| `strongswan-mod-xauth-generic` | XAuth 账号认证插件，缺它 XAuth 账号无法登录 |
+| `strongswan-mod-kernel-libipsec` | 内核态 IPsec |
+| `strongswan-mod-des` | 3DES 加密插件，缺它本包声明的 3DES 提案不可用（老版本 iOS/Android 客户端需要） |
+| `kmod-tun` | TUN/TAP 设备 |
+
+> `strongswan-mod-stroke` 会连带装上 `strongswan-ipsec`（提供 `/usr/sbin/ipsec` 命令与系统自带的 `ipsec` 服务）。
+> 本包会自行启动并管理 charon，因此系统那个 `ipsec` 服务会被停用——LuCI 服务列表里它显示「已禁用」是正常的，实际跑的是 `ipsec-vpnd`。
+
+### 如果提示找不到依赖
+
+先更新索引再装：
+
+```sh
+apk update
+apk add luci-app-ipsec-vpnd-*.apk
 ```
-+strongswan-minimal
-+strongswan-mod-xauth-generic
-+strongswan-mod-kernel-libipsec
-+strongswan-mod-des
-+kmod-tun
+
+索引缓存损坏时 `apk search` 会返回空，看起来像"源里没有 strongswan"，`apk update` 即可恢复。
+
+### 关于 ImmortalWrt 25.12 系列
+
+实测 **ImmortalWrt 25.12.2 官方源已经带 strongswan**（`apk search strongswan*` 有 100+ 个包），直接装本包即可，不需要混用 OpenWrt 源。
+
+25.12.0 / 25.12.1 是否同样带 strongswan **未验证**（这些源的镜像不提供历史索引，无法回溯确认）。如果你手上的版本确实报"找不到依赖"，可以自行确认：
+
+```sh
+apk update && apk search strongswan\*
 ```
 
-**这是 IPsec VPN 服务能起来的前提。**安装本包前请确认这些包在固件里都有，否则 LuCI 界面能开，但服务起不来。
-
-### 关于 ImmortalWrt 25.12 系列（重要）
-
-ImmortalWrt **25.12.0 / 25.12.1 的官方软件源在全架构上都没带 strongswan**（OpenWrt 上游 25.12 源有，ImmortalWrt 24.10 源也有，唯独 ImmortalWrt 25.12 系列缺）。如果你的固件就是 ImmortalWrt 25.12 系列且只挂着官方源，`opkg install luci-app-ipsec-vpnd` 会卡在依赖解析。
-
-可行方案（任选）：
-
-- **换 OpenWrt 上游源**：`/etc/opkg/distfeeds.conf` 里加 `src/gz openwrt_core https://downloads.openwrt.org/releases/25.12.1/targets/.../packages/`
-- **换同版本但带 strongswan 的 ImmortalWrt fork 源**
-- **用 szwjp/luci 这种社区源**，里头把 strongswan 也带上了
+若确实没有，可用**同版本**的 OpenWrt 源（注意内核与 libc 版本必须一致，否则会出现不可预期的依赖错配），或在固件里预装 strongswan 后再装本包。
 
 ## 安装
 
 ### 普通用户（装现成的 .apk）
 
-从本仓库的 `Actions → Build → 最新一次成功 run → Artifacts → ipsec-vpnd-packages` 下载 `luci-app-ipsec-vpnd_*.apk` 和 `luci-i18n-ipsec-vpnd-zh-cn_*.apk`（中文界面，可选），用 scp / WinSCP 推到路由器：
+从本仓库的 `Actions → Build → 最新一次成功 run → Artifacts → ipsec-vpnd-packages` 下载 `luci-app-ipsec-vpnd-*.apk` 和 `luci-i18n-ipsec-vpnd-zh-cn-*.apk`（中文界面，可选），用 scp / WinSCP 推到路由器：
 
 ```sh
-opkg install luci-app-ipsec-vpnd_*.apk
-opkg install luci-i18n-ipsec-vpnd-zh-cn_*.apk   # 可选
+apk update
+apk add --allow-untrusted luci-app-ipsec-vpnd-*.apk
+apk add --allow-untrusted luci-i18n-ipsec-vpnd-zh-cn-*.apk   # 可选
 ```
 
-第一次安装会跑 `uci-defaults/luci-ipsec-vpnd` 一次性初始化（建 network/firewall/zone + 删系统 ipsec 服务），然后 LuCI 刷新一下就能在 `VPN → IPSec VPN Server` 看到。
+> 25.12 用 `apk`，更老的版本用 `opkg install`。
+> `--allow-untrusted` 是因为 CI 产出的包没有签名；正式分发建议自行签名。
 
-或者从 release 装（GitHub Actions 自动把每次 main 提交 publish 到 `IPSec VPND Latest Build` release）：
+第一次安装会跑 `uci-defaults/luci-ipsec-vpnd` 一次性初始化（建 network/firewall/zone + 停用系统 ipsec 服务 + 拉起 VPN 网关接口），然后 LuCI 刷新一下就能在 `VPN → IPSec VPN Server` 看到。
+
+或者从 release 装（GitHub Actions 自动把每次 main 提交 publish 到 `IPSec VPND Latest Build` release，注意该 release 每次推送会重建，文件名里的版本号会变）：
 
 ```sh
-opkg install https://github.com/szwjp/luci-app-ipsec-vpnd/releases/download/luci-app-ipsec-vpnd/luci-app-ipsec-vpnd_27.906.25.12-r1_all.apk
+apk add --allow-untrusted https://github.com/szwjp/luci-app-ipsec-vpnd/releases/download/luci-app-ipsec-vpnd/luci-app-ipsec-vpnd-27.906.25.12-r12.apk
 ```
 
 ### 自己构建（社区分发 / 自己做 firmware）
@@ -83,10 +102,13 @@ opkg install https://github.com/szwjp/luci-app-ipsec-vpnd/releases/download/luci
 sudo apt-get install -y build-essential meson ninja-build fakeroot
 
 # 用仓库自带的 .github/build-pkg.sh
-fakeroot bash .github/build-pkg.sh apk 1     # 出 luci-app-ipsec-vpnd_*.apk + luci-i18n-ipsec-vpnd-zh-cn-*.apk
+fakeroot bash .github/build-pkg.sh apk 1     # 出 luci-app-ipsec-vpnd-*.apk + luci-i18n-ipsec-vpnd-zh-cn-*.apk
 fakeroot bash .github/build-pkg.sh ipk 1     # 出同名 .ipk
 ls -l *.apk *.ipk
 ```
+
+> `fakeroot` 不能省：apk v3 的 `mkpkg` 直接按文件属主写包，没有 fakeroot 就会把构建者的 uid 打进包里，装出来的文件属主不是 root。
+> macOS 上脚本本身能跑（已把 `mktemp -p` / `find -printf` / `sha256sum` 换成可移植写法），但产物属主仍是本地用户，仅适合调试，正式发布请走 CI。
 
 `build-pkg.sh` 用了仓库里那个**专为本包定制的最小工具链**（apk-tools 自编译 + po2lmo 自编译 + ipkg-build），不依赖完整 OpenWrt SDK 编译环境；这就是为什么 `build.yml` 跑得很快（~40s）。所有 actions 都用 Node 24 版（`actions/checkout@v5` / `actions/upload-artifact@v6` / `softprops/action-gh-release@v3`）。
 
@@ -103,22 +125,29 @@ ls -l *.apk *.ipk
 .
 ├── Makefile                 # OpenWrt 包定义：LUCI_TITLE / LUCI_DEPENDS / PKG_*
 ├── htdocs/luci-static/resources/view/ipsec-vpnd.js
-│                            # LuCI web UI（cbid 表格 + 启停按钮）
+│                            # LuCI web UI（配置表单 + 在线客户端表 + 依赖诊断）
 ├── po/
 │   ├── templates/ipsec-vpnd.pot   # gettext 模板
 │   └── zh_Hans/ipsec-vpnd.po      # 简体中文翻译
 ├── root/
 │   ├── etc/config/ipsec-vpnd      # UCI 默认配置（服务默认 enabled=0）
-│   ├── etc/init.d/ipsec-vpnd      # procd init：写 ipsec.conf/secrets、启 starter
+│   ├── etc/init.d/ipsec-vpnd      # procd init：写 ipsec.conf/secrets、依赖自检、启 starter
 │   ├── etc/uci-defaults/luci-ipsec-vpnd
 │   │                              # 首次安装一次性：建 network.VPN + firewall
+│   ├── usr/lib/ipsec/luci-ipsec-vpnd-deps
+│   │                              # 依赖自检：init 启动拦截 + LuCI 诊断面板共用
+│   ├── usr/lib/ipsec/luci-ipsec-vpnd-updown
+│   │                              # strongSwan updown 钩子：记录客户端上下线
+│   ├── usr/libexec/rpcd/ipsec-vpnd # rpcd 后端：sessions / clear_history / deps
 │   ├── usr/share/luci/menu.d/luci-app-ipsec-vpnd.json
 │   │                              # LuCI 菜单注册（VPN → IPSec VPN Server）
 │   └── usr/share/rpcd/acl.d/luci-app-ipsec-vpnd.json
 │                                   # rpcd ACL：放行 luci-app-ipsec-vpnd 读写 /etc/config/ipsec-vpnd
-├── .github/workflows/
-│   ├── build.yml
-│   └── cleanup-old-workflow.yml
+├── .github/
+│   ├── build-pkg.sh              # 绕过 SDK 的 apk / ipk 直接打包脚本
+│   └── workflows/
+│       ├── build.yml
+│       └── cleanup-old-workflow.yml
 ├── LICENSE                       # Apache-2.0
 └── README.md                     # 本文件
 ```
@@ -135,11 +164,13 @@ ls -l *.apk *.ipk
 | 现象 | 排查 |
 |---|---|
 | LuCI 菜单看不到 IPSec VPN Server | LuCI → 系统 → 软件包，确认 `luci-app-ipsec-vpnd` 已装；刷新 LuCI 缓存（`rm -f /tmp/luci-indexcache`） |
-| 服务起不来，日志说 "starter: no such file" | `strongswan-minimal` 没装；装上 |
+| 装完服务起不来，日志说 "starter: no such file" | strongSwan 运行时没装上。先 `apk update`（索引缓存坏了会搜不到包），再 `apk add strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des` |
+| LuCI 页面顶部出现红色「缺少依赖」 | 页面会直接列出缺哪一项以及对应的安装命令，照着执行即可 |
 | 客户端拨不上，日志说 "no IKE config" | 看 `/etc/config/ipsec-vpnd` 的 `enabled` 是不是 `1`；看 init 日志（`logread \| grep ipsec`） |
+| 客户端拨不上，日志说 "no acceptable proposal" | 多半缺 3DES 插件：装 `strongswan-mod-des` |
 | 系统自带 ipsec 又被启起来抢端口 | 升级 strongswan 包后可能要再跑一次 `uci-defaults/luci-ipsec-vpnd`——本包 init 脚本每次启动前都会重新 stop+disable 系统那个，但只在服务 enabled 时跑 |
-| ImmortalWrt 25.12 装不上（缺依赖） | 见上面“关于 ImmortalWrt 25.12 系列” |
-| GitHub Actions 出包失败 | 看 `Build` workflow 的 step 日志；常见坑在 `actions/cache` 没命中、host 工具链 apt 装失败这些 |
+| 装完 `ipsec0` 上没有 VPN 网关地址 | 执行 `ifup VPN`；本包在安装与服务启动时都会自动执行一次 |
+| GitHub Actions 出包失败 | 看 `Build` workflow 的 step 日志；常见是 host 工具链 apt 装失败、或 apk-tools/po2lmo 编译报错 |
 
 ## 许可证
 

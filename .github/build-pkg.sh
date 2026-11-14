@@ -30,7 +30,8 @@ else
 	PKG_VERSION="$PKG_SOURCE_DATE_EPOCH~$(git rev-parse --short HEAD)-r99"
 fi
 
-TEMP_DIR="$(mktemp -d -p $BASE_DIR)"
+# 用模板形式而非 GNU 专有的 mktemp -p，保证 macOS 上也能本地构建
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/luci-app-ipsec-vpnd-build.XXXXXX")"
 TEMP_PKG_DIR="$TEMP_DIR/$PKG_NAME"
 mkdir -p "$TEMP_PKG_DIR/lib/upgrade/keep.d/"
 mkdir -p "$TEMP_PKG_DIR/usr/lib/lua/luci/i18n/"
@@ -44,6 +45,9 @@ fi
 cp -fpR "$PKG_DIR/htdocs"/* "$TEMP_PKG_DIR/www/"
 cp -fpR "$PKG_DIR/root"/* "$TEMP_PKG_DIR/"
 
+# 排除 macOS 的 .DS_Store 等垃圾文件，别把它们打进包里
+find "$TEMP_PKG_DIR" -name '.DS_Store' -delete
+
 cat > "$TEMP_PKG_DIR/lib/upgrade/keep.d/$PKG_NAME" <<-EOF
 /etc/config/ipsec-vpnd
 EOF
@@ -53,11 +57,17 @@ po2lmo "$PKG_DIR/po/zh_Hans/ipsec-vpnd.po" "$TEMP_PKG_DIR/usr/lib/lua/luci/i18n/
 mv "$TEMP_PKG_DIR/usr/lib/lua/luci/i18n/ipsec-vpnd.zh-cn.lmo" "$TEMP_DIR/ipsec-vpnd.zh-cn.lmo"
 
 if [ "$PKG_MGR" == "apk" ]; then
-	find "$TEMP_PKG_DIR" -type f,l -printf '/%P\n' | sort > "$TEMP_PKG_DIR/lib/apk/packages/$PKG_NAME.list"
+	# 用 find + sed 而非 GNU 专有的 -printf，保证 macOS 上也能本地构建
+	( cd "$TEMP_PKG_DIR" && find . -type f,l | sed 's|^\./|/|' ) | sort > "$TEMP_PKG_DIR/lib/apk/packages/$PKG_NAME.list"
 	echo "/etc/config/ipsec-vpnd" >> "$TEMP_PKG_DIR/lib/apk/packages/$PKG_NAME.conffiles"
 	cat "$TEMP_PKG_DIR/lib/apk/packages/$PKG_NAME.conffiles" | while IFS= read -r file; do
 		[ -f "$TEMP_PKG_DIR/$file" ] || continue
-		sha256sum "$TEMP_PKG_DIR/$file" | sed "s,$TEMP_PKG_DIR/,," >> "$TEMP_PKG_DIR/lib/apk/packages/$PKG_NAME.conffiles_static"
+		# sha256sum 是 GNU 的，macOS 上用 shasum -a 256
+		if command -v sha256sum >/dev/null 2>&1; then
+			sha256sum "$TEMP_PKG_DIR/$file"
+		else
+			shasum -a 256 "$TEMP_PKG_DIR/$file"
+		fi | sed "s,$TEMP_PKG_DIR/,," >> "$TEMP_PKG_DIR/lib/apk/packages/$PKG_NAME.conffiles_static"
 	done
 
 	echo -e '#!/bin/sh
@@ -71,6 +81,7 @@ default_postinst
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
+	/sbin/ifup VPN >/dev/null 2>&1
 	exit 0
 }' > "$TEMP_DIR/post-install"
 
@@ -86,6 +97,7 @@ default_postinst
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
+	/sbin/ifup VPN >/dev/null 2>&1
 	exit 0
 }' > "$TEMP_DIR/post-upgrade"
 
@@ -108,7 +120,7 @@ default_prerm' > "$TEMP_DIR/pre-deinstall"
 		--script "post-install:$TEMP_DIR/post-install" \
 		--script "post-upgrade:$TEMP_DIR/post-upgrade" \
 		--script "pre-deinstall:$TEMP_DIR/pre-deinstall" \
-		--info "depends:libc kmod-tun" \
+		--info "depends:libc kmod-tun strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des" \
 		--files "$TEMP_PKG_DIR" \
 		--output "$TEMP_DIR/${PKG_NAME}-${PKG_VERSION}.apk"
 
@@ -119,7 +131,7 @@ else
 	cat > "$TEMP_PKG_DIR/CONTROL/control" <<-EOF
 		Package: $PKG_NAME
 		Version: $PKG_VERSION
-		Depends: libc, kmod-tun
+		Depends: libc, kmod-tun, strongswan-minimal, strongswan-mod-xauth-generic, strongswan-mod-kernel-libipsec, strongswan-mod-des
 		Source: https://github.com/szwjp/luci-app-ipsec-vpnd
 		SourceName: $PKG_NAME
 		Section: luci
@@ -145,6 +157,7 @@ default_postinst $0 $@' > "$TEMP_PKG_DIR/CONTROL/postinst"
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
+	/sbin/ifup VPN >/dev/null 2>&1
 	exit 0
 }" > "$TEMP_PKG_DIR/CONTROL/postinst-pkg"
 	chmod 0755 "$TEMP_PKG_DIR/CONTROL/postinst-pkg"
@@ -166,7 +179,7 @@ mkdir -p "$I18N_DIR/usr/lib/lua/luci/i18n/"
 cp "$TEMP_DIR/ipsec-vpnd.zh-cn.lmo" "$I18N_DIR/usr/lib/lua/luci/i18n/"
 
 if [ "$PKG_MGR" == "apk" ]; then
-	find "$I18N_DIR" -type f,l -printf '/%P\n' | sort > "$TEMP_DIR/i18n.list"
+	( cd "$I18N_DIR" && find . -type f,l | sed 's|^\./|/|' ) | sort > "$TEMP_DIR/i18n.list"
 	apk mkpkg \
 		--info "name:$I18N_NAME" \
 		--info "version:$PKG_VERSION" \
