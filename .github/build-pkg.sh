@@ -181,7 +181,7 @@ default_prerm' > "$TEMP_DIR/pre-deinstall"
 		--script "post-upgrade:$TEMP_DIR/post-upgrade" \
 		--script "pre-upgrade:$TEMP_DIR/pre-upgrade" \
 		--script "pre-deinstall:$TEMP_DIR/pre-deinstall" \
-		--info "depends:libc kmod-tun strongswan-minimal strongswan-mod-xauth-generic strongswan-mod-kernel-libipsec strongswan-mod-des" \
+		--info "depends:libc kmod-tun strongswan-minimal strongswan-default strongswan-mod-kernel-libipsec" \
 		--files "$TEMP_PKG_DIR" \
 		--output "$TEMP_DIR/${PKG_NAME}-${PKG_VERSION}.apk"
 
@@ -192,7 +192,7 @@ else
 	cat > "$TEMP_PKG_DIR/CONTROL/control" <<-EOF
 		Package: $PKG_NAME
 		Version: $PKG_VERSION
-		Depends: libc, kmod-tun, strongswan-minimal, strongswan-mod-xauth-generic, strongswan-mod-kernel-libipsec, strongswan-mod-des
+		Depends: libc, kmod-tun, strongswan-minimal, strongswan-default, strongswan-mod-kernel-libipsec
 		Source: https://github.com/szwjp/luci-app-ipsec-vpnd
 		SourceName: $PKG_NAME
 		Section: luci
