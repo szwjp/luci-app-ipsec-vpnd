@@ -90,6 +90,9 @@ default_postinst
 	else
 		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
 	fi
+	# strongswan-default 会带 swanctl 服务；本包用 ipsec 服务托管 charon，
+	# 两个服务都开机自启会抢 UDP 500/4500，这里强制只保留 ipsec。
+	[ -x /etc/init.d/swanctl ] && /etc/init.d/swanctl disable >/dev/null 2>&1
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	# 已装机器（initialized=1）不会重跑 uci-defaults：补上 VPN zone 的 MSS clamp
@@ -141,6 +144,9 @@ default_postinst
 	else
 		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable 2>/dev/null; /etc/init.d/ipsec stop 2>/dev/null; }
 	fi
+	# strongswan-default 会带 swanctl 服务；本包用 ipsec 服务托管 charon，
+	# 两个服务都开机自启会抢 UDP 500/4500，这里强制只保留 ipsec。
+	[ -x /etc/init.d/swanctl ] && /etc/init.d/swanctl disable >/dev/null 2>&1
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	# 已装机器（initialized=1）不会重跑 uci-defaults：补上 VPN zone 的 MSS clamp
@@ -223,6 +229,9 @@ default_postinst $0 $@
 	else
 		[ -x /etc/init.d/ipsec ] && { /etc/init.d/ipsec disable >/dev/null 2>&1; /etc/init.d/ipsec stop >/dev/null 2>&1; }
 	fi
+	# strongswan-default 会带 swanctl 服务；本包用 ipsec 服务托管 charon，
+	# 两个服务都开机自启会抢 UDP 500/4500，这里强制只保留 ipsec。
+	[ -x /etc/init.d/swanctl ] && /etc/init.d/swanctl disable >/dev/null 2>&1
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
 	# 已装机器（initialized=1）不会重跑 uci-defaults：补上 VPN zone 的 MSS clamp
