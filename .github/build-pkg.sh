@@ -92,6 +92,11 @@ default_postinst
 	fi
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
+	# 已装机器（initialized=1）不会重跑 uci-defaults：补上 VPN zone 的 MSS clamp
+	if uci -q get firewall.VPN >/dev/null 2>&1; then
+		uci -q set firewall.VPN.mtu_fix=1 && uci -q commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1
+	fi
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
@@ -138,6 +143,11 @@ default_postinst
 	fi
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
+	# 已装机器（initialized=1）不会重跑 uci-defaults：补上 VPN zone 的 MSS clamp
+	if uci -q get firewall.VPN >/dev/null 2>&1; then
+		uci -q set firewall.VPN.mtu_fix=1 && uci -q commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1
+	fi
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
@@ -215,6 +225,11 @@ default_postinst $0 $@
 	fi
 	# UCI 配置里明文存着 XAuth 密码与 PSK，收紧到 0600
 	chmod 600 /etc/config/ipsec-vpnd 2>/dev/null
+	# 已装机器（initialized=1）不会重跑 uci-defaults：补上 VPN zone 的 MSS clamp
+	if uci -q get firewall.VPN >/dev/null 2>&1; then
+		uci -q set firewall.VPN.mtu_fix=1 && uci -q commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1
+	fi
 	rm -f /tmp/luci-indexcache.*
 	rm -rf /tmp/luci-modulecache/
 	killall -HUP rpcd 2>/dev/null
